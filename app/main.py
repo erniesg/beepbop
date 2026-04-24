@@ -376,37 +376,26 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     "3. Every external action waits for your tap approval\n\n"
                     "Dashboard: beepbop.berlayar.ai")
             elif cmd == "/list":
+                from app.telegram_bot import _html_escape
                 opps = list_opportunities(limit=50)
                 opps = sorted(opps, key=lambda o: (o.get("match_score") or 0), reverse=True)
 
                 def _sentence_case(t: str) -> str:
-                    """Fix all-caps titles to readable form, preserving known acronyms."""
                     t = (t or "").strip()
                     if not t:
                         return ""
-                    # If majority already mixed case, leave alone
                     letters = [c for c in t if c.isalpha()]
                     if letters and sum(1 for c in letters if c.isupper()) / len(letters) < 0.6:
                         return t
-                    # Sentence-case: lowercase everything, then fix acronyms + first letter
                     t = t.lower().capitalize()
-                    ACRONYMS = {"moe", "ite", "nac", "nlb", "nhb", "ncss", "sgd", "itq", "rfq", "rfp",
-                                "wsq", "acta", "acra", "ura", "lta", "hdb", "ica", "ntu", "nus",
-                                "smu", "mps", "bmps", "tts", "cpr", "ttsh", "mnd", "mha", "mom",
-                                "mof", "mti", "mccy", "mse", "msf", "moh", "hpb"}
-                    words = t.split()
-                    out = []
-                    for w in words:
-                        pure = "".join(c for c in w if c.isalpha())
-                        if pure.lower() in ACRONYMS:
-                            out.append(w.upper())
-                        else:
-                            out.append(w)
-                    return " ".join(out)
+                    ACRONYMS = {"moe","ite","nac","nlb","nhb","ncss","sgd","itq","rfq","rfp",
+                                "wsq","acta","acra","ura","lta","hdb","ica","ntu","nus","smu",
+                                "mps","bmps","tts","cpr","ttsh","mnd","mha","mom","mof","mti",
+                                "mccy","mse","msf","moh","hpb","pa"}
+                    return " ".join(w.upper() if "".join(c for c in w if c.isalpha()).lower() in ACRONYMS else w for w in t.split())
 
                 def _short_agency(a: str) -> str:
                     a = (a or "").strip()
-                    # Common short forms
                     mapping = {
                         "Ministry of Education - Schools": "MOE Schools",
                         "Ministry of Education": "MOE",
@@ -421,32 +410,28 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     return mapping.get(a, a[:30])
 
                 def _closing_short(c: str) -> str:
-                    # "27 Apr 2026 01:00PM" → "27 Apr"
                     parts = (c or "").split(" ")
                     return " ".join(parts[:2]) if len(parts) >= 2 else (c or "")
 
                 def _tier(score):
-                    if score is None:
-                        return "⚪"
-                    if score >= 0.7:
-                        return "🟢"
-                    if score >= 0.4:
-                        return "🟡"
+                    if score is None: return "⚪"
+                    if score >= 0.7: return "🟢"
+                    if score >= 0.4: return "🟡"
                     return "⚪"
 
-                lines = ["*Top matches* _against your creative-studio context_", ""]
+                lines = ["<b>Top matches</b> <i>against your creative-studio context</i>", ""]
                 for o in opps[:6]:
                     s = o.get("match_score")
-                    score_str = f"{s:.2f}" if s is not None else " —  "
-                    title = _sentence_case(o["title"])[:90]
-                    agency = _short_agency(o.get("agency", ""))
-                    closing = _closing_short(o.get("closing", ""))
+                    score_str = f"{s:.2f}" if s is not None else "  —  "
+                    title = _html_escape(_sentence_case(o["title"])[:90])
+                    agency = _html_escape(_short_agency(o.get("agency", "")))
+                    closing = _html_escape(_closing_short(o.get("closing", "")))
                     tier = _tier(s)
-                    lines.append(f"{tier} `{score_str}` /opp\\_{o['id']}")
+                    lines.append(f"{tier} <b>{score_str}</b>  /opp_{o['id']}")
                     lines.append(f"   {title}")
-                    lines.append(f"   _{agency}_  ·  closes {closing}")
+                    lines.append(f"   <i>{agency}</i>  ·  closes {closing}")
                     lines.append("")
-                lines.append("Tap any `/opp_<id>` for pitch artifacts + compliance check.")
+                lines.append("<i>Tap any /opp_&lt;id&gt; for pitch artifacts + compliance check.</i>")
                 send_text(chat_id, "\n".join(lines))
             elif cmd == "/opp" or cmd.startswith("/opp_"):
                 # accept /opp 9 or /opp_9
@@ -622,13 +607,15 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
         rates = ctx.get("rates") or "{}"
         try: rates = _j.loads(rates) if isinstance(rates, str) else rates
         except: rates = {}
-        rate_lines = "\n".join(f"  • {k}: SGD {v}" for k, v in list(rates.items())[:5]) or "  (no rates on file)"
+        from app.telegram_bot import _html_escape as _he
+        rate_lines = "\n".join(f"  • <code>{_he(k)}</code>: SGD {v}" for k, v in list(rates.items())[:6]) or "  <i>(no rates on file)</i>"
+        title_esc = _he(opp["title"][:80])
         if action == "deck":
-            preview = (f"*Confirm deck generation for:*\n_{opp['title'][:80]}_\n\n"
+            preview = (f"<b>Confirm deck generation:</b>\n<i>{title_esc}</i>\n\n"
                        f"Will include: about us, understanding of opp, approach, team, timeline, pricing headline, next steps.\n\n"
                        f"ETA: ~60-120s")
         else:
-            preview = (f"*Confirm quote generation for:*\n_{opp['title'][:80]}_\n\n"
+            preview = (f"<b>Confirm quote generation:</b>\n<i>{title_esc}</i>\n\n"
                        f"Will use your rates:\n{rate_lines}\n\n"
                        f"ETA: ~60-120s")
         kb = [[{"text": "✓ Generate", "callback_data": f"{action}_go:{opp_id}"},
@@ -636,7 +623,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
         import httpx as _httpx
         _httpx.post(
             f"https://api.telegram.org/bot{_as.telegram_bot_token()}/sendMessage",
-            json={"chat_id": chat_id, "text": preview, "parse_mode": "Markdown",
+            json={"chat_id": chat_id, "text": preview, "parse_mode": "HTML",
                   "reply_markup": {"inline_keyboard": kb}}, timeout=15)
         return {"ok": True, "action": action, "stage": "confirm"}
 
@@ -644,15 +631,16 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
         opp_id = parsed["outreach_id"]
         kind = action.replace("_go", "")
         answer_callback(callback_id, f"Starting {kind} generation — please wait")
-        send_text(chat_id, f"⏳ *{kind.capitalize()}* generation started for opp #{opp_id}. Genspark spins up a Claw VM, generates content, returns a share URL. ETA ~60-120s.")
+        send_text(chat_id, f"⏳ <b>{kind.capitalize()}</b> generation started for opp #{opp_id}. Genspark spins up a Claw VM, generates content, returns a share URL. ETA ~60-120s.")
         def _gen():
             from app.outreach import generate_deck, generate_quote
+            from app.telegram_bot import _html_escape as _he
             try:
                 art = (generate_deck if kind == "deck" else generate_quote)(opp_id, _load_default_context())
                 url = art.get("share_url") or "(generated, no URL returned)"
-                send_text(chat_id, f"✅ *{kind.capitalize()} ready*\n{url}")
+                send_text(chat_id, f"✅ <b>{kind.capitalize()} ready</b>\n{url}")
             except Exception as e:
-                send_text(chat_id, f"❌ *{kind} failed*\n`{str(e)[:300]}`\n\nRetry with the same button.")
+                send_text(chat_id, f"❌ <b>{kind} failed</b>\n<code>{_he(str(e)[:300])}</code>\n\nRetry with the same button.")
         background_tasks.add_task(_gen)
         return {"ok": True, "action": action}
 
