@@ -101,22 +101,30 @@ async def run_scrape_job(
             if msg:
                 _notify_safe(msg)
 
-        # Timeout budget: docs mode needs login wait + download time, so add headroom
-        effective_timeout = settings.scrape_timeout_seconds + (
-            login_wait_seconds + 300 if with_docs else 0
-        )
+        # Timeout budget — docs mode needs login wait + download time, awarded
+        # mode needs to chew through ~40 closed-tab detail pages.
+        extra = 0
+        if with_docs:
+            extra = login_wait_seconds + 300
+        elif awarded_only:
+            extra = 300  # ~3s/detail × 40 pages = 120s, plus tab-click + search
+        effective_timeout = settings.scrape_timeout_seconds + extra
 
         # For docs mode, use a persistent output dir so downloads survive past job end
         persistent_docs_root = Path.home() / ".beepbop" / "docs"
         if with_docs:
             persistent_docs_root.mkdir(parents=True, exist_ok=True)
 
+        # Awarded mode caps the work to keep the run snappy — 15 awarded rows
+        # is plenty to seed pricing analytics for v1.
+        effective_max = 15 if awarded_only else (max_pages * 15)
+
         async def _run_blocking(output_dir: str) -> dict:
             def _blocking() -> dict:
                 return run_search(
                     keywords=keywords,
                     output_dir=output_dir,
-                    max_total=max_pages * 15,
+                    max_total=effective_max,
                     profile_dir=str(profile_root) if profile_root else str(Path(output_dir) / "profile"),
                     headless=not with_docs,
                     skip_downloads=not with_docs,
