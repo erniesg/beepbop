@@ -1,0 +1,29 @@
+[Script Info]
+Title: BeepBop walkthrough callouts
+ScriptType: v4.00+
+PlayResX: 1920
+PlayResY: 1080
+WrapStyle: 0
+ScaledBorderAndShadow: yes
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Callout,Arial,42,&H00F5F7FB,&H0000E5FF,&HAA061019,&HCC061019,-1,0,0,0,100,100,0,0,4,2,0,7,1160,80,110,1
+Style: Small,Arial,28,&H00BDEFF7,&H0000E5FF,&HAA061019,&HAA061019,-1,0,0,0,100,100,0,0,4,1,0,7,1160,80,182,1
+Style: Bottom,Arial,34,&H00F5F7FB,&H0000E5FF,&HAA061019,&HCC061019,-1,0,0,0,100,100,0,0,4,2,0,2,120,120,72,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:00.00,0:00:04.80,Callout,,0,0,0,,Genspark deck link is already in Telegram
+Dialogue: 0,0:00:00.00,0:00:04.80,Small,,0,0,0,,One tap opens the generated pitch deck workspace
+Dialogue: 0,0:00:04.80,0:00:10.40,Callout,,0,0,0,,GeBIZ skill monitors opportunities
+Dialogue: 0,0:00:04.80,0:00:10.40,Small,,0,0,0,,Listings, contacts, awarded work, and pricing signals
+Dialogue: 0,0:00:10.40,0:00:16.20,Callout,,0,0,0,,Context is your business memory
+Dialogue: 0,0:00:10.40,0:00:16.20,Small,,0,0,0,,Services, rates, portfolio, and tender-fit preferences
+Dialogue: 0,0:00:16.20,0:00:23.80,Callout,,0,0,0,,Ranked matches, not another search tab
+Dialogue: 0,0:00:16.20,0:00:23.80,Small,,0,0,0,,Claude scores fit and pulls out hidden prerequisites
+Dialogue: 0,0:00:23.80,0:00:31.50,Callout,,0,0,0,,Generate the deck and quote sheet
+Dialogue: 0,0:00:23.80,0:00:31.50,Small,,0,0,0,,Genspark turns a tender into submission artifacts
+Dialogue: 0,0:00:31.50,0:00:39.20,Callout,,0,0,0,,Managed agents handle the tabs
+Dialogue: 0,0:00:31.50,0:00:39.20,Small,,0,0,0,,Creators stay focused on the work they love
+Dialogue: 0,0:00:39.20,0:00:43.80,Bottom,,0,0,0,,A portable bid-ops loop for creators, artists, and SMEs
