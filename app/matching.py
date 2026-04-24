@@ -218,40 +218,52 @@ Return 2-5 items — always at least 2 for school/government work. Order by seve
 
 REMEMBER_SYSTEM = """You convert a user's free-text memory into a STRUCTURED context update for their SME org profile.
 
-Output STRICT JSON only:
+If the input is AMBIGUOUS (e.g. "I charge 6000 for a day" — which service? photography? videography? workshop?), return a clarification request INSTEAD of guessing.
+
+Output STRICT JSON only, one of these shapes:
+
+Shape A — direct update:
 {
-  "update_type": "rate" | "service" | "certification" | "profile" | "rejection",
+  "update_type": "rate" | "service" | "certification" | "profile",
   "field": "<key>",
   "value": <value — number for rates, string otherwise>,
   "summary": "<short human-readable confirmation>"
 }
 
-Examples:
-"I charge 1800 for videography full-day"
-  → {"update_type": "rate", "field": "videography_fullday", "value": 1800, "summary": "Rate saved: videography full-day = SGD 1800"}
+Shape B — needs clarification:
+{
+  "update_type": "needs_clarification",
+  "question": "<short question to ask the user>",
+  "options": ["<opt1>", "<opt2>", "<opt3>", "<opt4>"]
+}
 
-"My photography half-day is $650"
-  → {"update_type": "rate", "field": "photography_halfday", "value": 650, "summary": "Rate saved: photography half-day = SGD 650"}
+Examples (direct):
+"I charge 1800 for videography full-day" → {"update_type":"rate","field":"videography_fullday","value":1800,"summary":"Rate saved: videography full-day = SGD 1800"}
+"My photography half-day is $650" → {"update_type":"rate","field":"photography_halfday","value":650,"summary":"Rate saved: photography half-day = SGD 650"}
+"We're MOE Registered Instructors" → {"update_type":"certification","field":"certifications","value":"MOE Registered Instructor","summary":"Added: MOE Registered Instructor"}
+"We also do motion graphics" → {"update_type":"service","field":"services","value":"motion graphics","summary":"Added service: motion graphics"}
 
-"We're MOE Registered Instructors"
-  → {"update_type": "certification", "field": "certifications", "value": "MOE Registered Instructor", "summary": "Added: MOE Registered Instructor"}
+Examples (needs clarification):
+"I charge 6000 for a day" → {"update_type":"needs_clarification","question":"Which service is SGD 6000/day for?","options":["photography","videography","workshop","something else"]}
+"Full day is 1500" → {"update_type":"needs_clarification","question":"Full day of what service?","options":["photography","videography","workshop","something else"]}
+"I changed my rate" → {"update_type":"needs_clarification","question":"Which rate changed?","options":["photography_halfday","photography_fullday","videography_fullday","something else"]}
 
-"We also do motion graphics"
-  → {"update_type": "service", "field": "services", "value": "motion graphics", "summary": "Added service: motion graphics"}
-
-"We worked on the NLB reading campaign 2024"
-  → {"update_type": "profile", "field": "profile_md", "value": "- Past work: NLB reading campaign 2024", "summary": "Noted past work"}
-
-Pick the most specific update_type. If it's clearly a rate (includes SGD/dollars/hourly/daily), use "rate"."""
+Pick "rate" only when service AND duration are specified. Otherwise clarify.
+If clearly about a service you offer but unclear detail, clarify.
+If it's prose/history/context (no numbers), use update_type="profile"."""
 
 
-def parse_remember_fact(text: str) -> dict:
-    """Turn a free-text /remember fact into a structured update. Fallback to profile append."""
+def parse_remember_fact(text: str, extra_hint: str | None = None) -> dict:
+    """Turn free-text /remember fact into a structured update. May return
+    {update_type: 'needs_clarification', question, options} if ambiguous.
+    Fallback to profile append on API error."""
+    user_content = text if not extra_hint else f"{text}\n(user clarified: {extra_hint})"
     try:
-        raw = _claude_with_retry(REMEMBER_SYSTEM, text, max_tokens=300)
+        raw = _claude_with_retry(REMEMBER_SYSTEM, user_content, max_tokens=400)
         raw = re.sub(r"^```(?:json)?|```$", "", raw, flags=re.MULTILINE).strip()
         data = json.loads(raw)
-        if data.get("update_type") in {"rate", "service", "certification", "profile"}:
+        ut = data.get("update_type")
+        if ut in {"rate", "service", "certification", "profile", "needs_clarification"}:
             return data
     except Exception:
         pass

@@ -13,6 +13,11 @@ from app.auth import current_user, exchange_code, get_oauth, login_user
 from app.config import ROOT, get_settings
 
 
+# In-memory pending clarifications — chat_id → original fact text.
+# (for single-user demo; swap to Redis/DB for multi-user)
+_PENDING_REMEMBER: dict[int, str] = {}
+
+
 settings = get_settings()
 app = FastAPI(title="beepbop", version=__version__)
 
@@ -463,13 +468,32 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                 send_text(chat_id, "Kicking scrape (using seed data for demo speed)… ✓ 0 new, 42 known.")
             elif cmd == "/remember":
                 if not args:
-                    send_text(chat_id, "Usage: `/remember I charge 1800 for full-day video`")
+                    send_text(chat_id, "Usage: <code>/remember I charge 1800 for full-day video</code>")
                 else:
                     # Structured parse via Claude
                     from app.matching import parse_remember_fact
                     from app.db import conn as _conn
+                    from app.telegram_bot import _html_escape
+                    import httpx as _httpx2
                     import json as _j
                     parsed = parse_remember_fact(args)
+
+                    # Ambiguous? Ask back with inline keyboard
+                    if parsed.get("update_type") == "needs_clarification":
+                        _PENDING_REMEMBER[int(chat_id)] = args
+                        options = parsed.get("options", [])[:4]
+                        question = parsed.get("question", "Please clarify")
+                        keyboard = [[{"text": opt, "callback_data": f"rclar:{i}"}]
+                                    for i, opt in enumerate(options)]
+                        _httpx2.post(
+                            f"https://api.telegram.org/bot{_as.telegram_bot_token()}/sendMessage",
+                            json={"chat_id": chat_id,
+                                  "text": f"🤔 <b>{_html_escape(question)}</b>\n\n<i>You said:</i> \"{_html_escape(args)}\"",
+                                  "parse_mode": "HTML",
+                                  "reply_markup": {"inline_keyboard": keyboard}},
+                            timeout=15)
+                        return {"ok": True, "command": cmd, "stage": "clarify"}
+
                     ut, field, value = parsed["update_type"], parsed["field"], parsed["value"]
                     with _conn() as c:
                         row = c.execute("SELECT * FROM contexts ORDER BY id ASC LIMIT 1").fetchone()
@@ -592,6 +616,62 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
     if action == "cancel":
         answer_callback(callback_id, "Cancelled")
         send_text(chat_id, "✕ Cancelled.")
+        return {"ok": True, "action": action}
+
+    # Clarification reply: user picked an option for a pending /remember
+    if action == "rclar":
+        opt_idx = parsed["outreach_id"]  # reused int
+        original_fact = _PENDING_REMEMBER.pop(int(chat_id), None)
+        if not original_fact:
+            answer_callback(callback_id, "Clarification expired")
+            return {"ok": False, "error": "no_pending"}
+        # We need the option text — retrieve via chat context OR call parse again with the index
+        # Simpler: ask Claude to re-parse with the clarification index
+        from app.matching import parse_remember_fact
+        # Re-parse once to get the options, then pick by index and feed back
+        first = parse_remember_fact(original_fact)
+        options = first.get("options", []) if first.get("update_type") == "needs_clarification" else []
+        chosen = options[opt_idx] if opt_idx < len(options) else "unspecified"
+        answer_callback(callback_id, f"Got it: {chosen}")
+        # Re-parse with hint
+        from app.db import conn as _conn
+        import json as _j
+        refined = parse_remember_fact(original_fact, extra_hint=chosen)
+        if refined.get("update_type") == "needs_clarification":
+            # Still ambiguous — fallback to profile
+            with _conn() as c:
+                row = c.execute("SELECT * FROM contexts ORDER BY id ASC LIMIT 1").fetchone()
+                new_md = (row["profile_md"] or "") + f"\n\n- {original_fact} ({chosen})"
+                c.execute("UPDATE contexts SET profile_md=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                          (new_md, row["id"]))
+            send_text(chat_id, f"✓ Remembered as note: <i>{original_fact} — {chosen}</i>")
+            return {"ok": True, "action": action}
+
+        ut = refined["update_type"]
+        field = refined.get("field", "")
+        value = refined.get("value", "")
+        with _conn() as c:
+            row = c.execute("SELECT * FROM contexts ORDER BY id ASC LIMIT 1").fetchone()
+            if ut == "rate":
+                rates = _j.loads(row["rates"] or "{}")
+                rates[field] = value
+                c.execute("UPDATE contexts SET rates=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                          (_j.dumps(rates), row["id"]))
+            elif ut == "service":
+                services = _j.loads(row["services"] or "[]")
+                if value not in services:
+                    services.append(value)
+                c.execute("UPDATE contexts SET services=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                          (_j.dumps(services), row["id"]))
+            elif ut == "certification":
+                new_md = (row["profile_md"] or "") + f"\n\n<b>Certifications:</b> {value}"
+                c.execute("UPDATE contexts SET profile_md=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                          (new_md, row["id"]))
+            else:
+                new_md = (row["profile_md"] or "") + f"\n\n{value}"
+                c.execute("UPDATE contexts SET profile_md=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                          (new_md, row["id"]))
+        send_text(chat_id, f"✓ {refined.get('summary', 'saved')}")
         return {"ok": True, "action": action}
 
     # Propose flow: request approval + mock reply + meeting
