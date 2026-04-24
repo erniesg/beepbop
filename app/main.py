@@ -409,6 +409,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     "/scrape [keywords] — rescan GeBIZ (e.g. <code>/scrape photography workshop</code>)\n"
                     "/scrape_docs [keywords] — scrape WITH tender-doc download (Singpass handoff)\n"
                     "/jobs — recent scrape jobs + status\n"
+                    "/artifacts [opp_id] — recent decks + quotes (URLs)\n"
                     "/pricing &lt;id&gt; — competitive pricing analysis for an opp\n"
                     "/help — this message\n\n"
                     "<b>Flow</b>\n"
@@ -591,6 +592,48 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                         elif j["status"] == "failed":
                             line += f"\n  <i>{_html_escape((j['error'] or '')[:120])}</i>"
                         lines.append(line)
+                    send_text(chat_id, "\n".join(lines))
+            elif cmd == "/artifacts":
+                from app.telegram_bot import _html_escape
+                from app.db import conn as _conn
+                # Optional positional: /artifacts 9 → only that opp
+                opp_filter = None
+                if args and args[0].isdigit():
+                    opp_filter = int(args[0])
+                with _conn() as c:
+                    if opp_filter:
+                        rows = c.execute(
+                            "SELECT a.id, a.opportunity_id, a.kind, a.share_url, a.gsk_job_id, a.created_at, o.title "
+                            "FROM artifacts a LEFT JOIN opportunities o ON o.id=a.opportunity_id "
+                            "WHERE a.opportunity_id=? ORDER BY a.id DESC LIMIT 10",
+                            (opp_filter,),
+                        ).fetchall()
+                    else:
+                        rows = c.execute(
+                            "SELECT a.id, a.opportunity_id, a.kind, a.share_url, a.gsk_job_id, a.created_at, o.title "
+                            "FROM artifacts a LEFT JOIN opportunities o ON o.id=a.opportunity_id "
+                            "ORDER BY a.id DESC LIMIT 8"
+                        ).fetchall()
+                if not rows:
+                    msg = (f"No artifacts for opp #{opp_filter} yet."
+                           if opp_filter else "No decks/quotes generated yet. Try /opp &lt;id&gt;.")
+                    send_text(chat_id, msg)
+                else:
+                    header = (f"<b>Artifacts for opp #{opp_filter}</b>"
+                              if opp_filter else "<b>Recent decks + quotes</b>")
+                    lines = [header]
+                    for r in rows:
+                        emoji = "📊" if r["kind"] == "quote" else "📝"
+                        title = (r["title"] or "(unknown)")[:50]
+                        url = r["share_url"] or (
+                            f"https://www.genspark.ai/agents?id={r['gsk_job_id']}"
+                            if r["gsk_job_id"] else ""
+                        )
+                        link = (f"<a href=\"{url}\">open</a>" if url else "<i>no url</i>")
+                        lines.append(
+                            f"{emoji} #{r['id']} · opp {r['opportunity_id']} · "
+                            f"{_html_escape(title)} → {link}"
+                        )
                     send_text(chat_id, "\n".join(lines))
             elif cmd == "/remember":
                 if not args:

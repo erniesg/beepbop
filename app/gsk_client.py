@@ -112,6 +112,82 @@ def _extract_project_id(payload: Any) -> str:
     return ""
 
 
+def _agent_ask_streaming(
+    task_type: str,
+    message: str,
+    *,
+    on_project_id: Callable[[str], None] | None = None,
+    timeout: int = 600,
+) -> dict:
+    """Call POST /api/tool_cli/agent_ask and stream NDJSON line-by-line.
+
+    Unlike create_task (whose heartbeats only carry {version, debug, message,
+    heartbeat, elapsed_seconds}), agent_ask promotes ``project_id`` to a
+    top-level key in early intermediate messages — see askAgent() in
+    node_modules/@genspark/cli/dist/acp-serve.js line 502, the same callback
+    ACP mode relies on for mid-flight session persistence. So the URL DM
+    can fire ~10-20s in instead of waiting for the final response.
+    """
+    base_url, api_key = _gsk_api_credentials()
+    url = f"{base_url}/api/tool_cli/agent_ask"
+    body = {"message": message, "task_type": task_type}
+    headers = {
+        "Content-Type": "application/json",
+        "X-Api-Key": api_key,
+        "Accept": "application/x-ndjson, application/json",
+    }
+
+    fired_pid = ""
+    final_result: dict | None = None
+    started = time.time()
+    _stream_log({"ts": started, "event": "request",
+                 "endpoint": "agent_ask", "task_type": task_type})
+
+    try:
+        with httpx.stream("POST", url, json=body, headers=headers, timeout=timeout) as resp:
+            if resp.status_code >= 400:
+                err_body = b"".join(resp.iter_bytes()).decode("utf-8", errors="replace")
+                _stream_log({"ts": time.time(), "event": "http_error",
+                             "status": resp.status_code, "body": err_body[:500]})
+                raise GskError(f"gsk agent_ask HTTP {resp.status_code}: {err_body[:300]}")
+            line_count = 0
+            for raw in resp.iter_lines():
+                line = (raw or "").strip()
+                if not line or not line.startswith("{"):
+                    continue
+                try:
+                    msg = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                line_count += 1
+                if line_count <= 5:
+                    _stream_log({"ts": time.time(), "event": "line",
+                                 "endpoint": "agent_ask", "n": line_count, "body": msg})
+                if on_project_id and not fired_pid:
+                    pid = _extract_project_id(msg)
+                    if pid:
+                        fired_pid = pid
+                        _stream_log({"ts": time.time(), "event": "project_id",
+                                     "endpoint": "agent_ask", "pid": pid,
+                                     "elapsed": round(time.time() - started, 1)})
+                        try:
+                            on_project_id(pid)
+                        except Exception as e:  # noqa: BLE001
+                            _stream_log({"ts": time.time(), "event": "callback_error", "err": str(e)})
+                if msg.get("status"):
+                    final_result = msg
+    except httpx.HTTPError as e:
+        raise GskError(f"gsk agent_ask stream error: {e}") from e
+
+    if not final_result:
+        raise GskError("gsk agent_ask stream ended with no final status")
+    if final_result.get("status") == "error":
+        raise GskError(f"gsk agent_ask error: {final_result.get('message', '')}")
+    _stream_log({"ts": time.time(), "event": "done",
+                 "endpoint": "agent_ask", "elapsed": round(time.time() - started, 1)})
+    return final_result
+
+
 def _create_task_streaming(
     task_type: str,
     task_name: str,
@@ -260,8 +336,13 @@ def create_slides(
     Slide agent routinely takes 3-6 min — 10-min timeout keeps headroom over Genspark variance.
     """
     if on_project_id is not None:
-        return _create_task_streaming(
-            "slides", task_name, prompt, SLIDES_INSTRUCTIONS,
+        # agent_ask is the streaming-friendly endpoint — it surfaces project_id
+        # mid-stream where create_task only emits opaque heartbeats. Bake the
+        # SLIDES_INSTRUCTIONS into the message body since agent_ask has no
+        # separate instructions slot.
+        return _agent_ask_streaming(
+            "slides",
+            f"{SLIDES_INSTRUCTIONS}\n\n{prompt}",
             on_project_id=on_project_id, timeout=600,
         )
     return _run(
@@ -282,11 +363,12 @@ def create_sheet(
     """Create a Google Sheets spreadsheet via create_task (agent-generated).
 
     Sheets agent is faster than slides — 5-min timeout is plenty.
-    Streams when ``on_project_id`` is supplied (see ``create_slides``).
+    Streams via agent_ask when ``on_project_id`` is supplied (see ``create_slides``).
     """
     if on_project_id is not None:
-        return _create_task_streaming(
-            "sheets", task_name, prompt, SHEETS_INSTRUCTIONS,
+        return _agent_ask_streaming(
+            "sheets",
+            f"{SHEETS_INSTRUCTIONS}\n\n{prompt}",
             on_project_id=on_project_id, timeout=300,
         )
     return _run(
