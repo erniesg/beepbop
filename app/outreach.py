@@ -58,25 +58,65 @@ def _quote_prompt(opp: dict, ctx: dict) -> str:
     )
 
 
+_GSK_BASE_URL = "https://www.genspark.ai"
+
+
+def _extract_artifact_urls(res: dict) -> tuple[str, str]:
+    """Pull (project_id, share_url) out of a gsk create_task response.
+
+    gsk shape: {"status": "ok", "message": "...", "data": {"project_id": "...", ...}}.
+    Older/alt shapes may put urls/ids at top level — check both.
+    """
+    data = res.get("data") if isinstance(res.get("data"), dict) else {}
+    project_id = (
+        data.get("project_id")
+        or data.get("task_id")
+        or res.get("project_id")
+        or res.get("task_id")
+        or res.get("job_id")
+        or ""
+    )
+    share_url = (
+        data.get("project_url")
+        or data.get("share_url")
+        or data.get("preview_url")
+        or data.get("url")
+        or res.get("share_url")
+        or res.get("url")
+        or ""
+    )
+    if not share_url and project_id:
+        share_url = f"{_GSK_BASE_URL}/agents?id={project_id}"
+    # Log raw response for debugging (rotating jsonl)
+    try:
+        import pathlib
+        log_path = pathlib.Path("/tmp/beepbop-gsk-responses.jsonl")
+        with log_path.open("a") as f:
+            f.write(json.dumps({"ts": datetime.utcnow().isoformat(), "res": res}) + "\n")
+    except Exception:
+        pass
+    return project_id, share_url
+
+
 def generate_deck(opportunity_id: int, ctx: dict) -> dict:
     opp = get_opportunity(opportunity_id)
     if not opp:
         raise ValueError(f"opp {opportunity_id} not found")
     res = gsk_client.create_slides(_deck_prompt(opp, ctx))
-    share_url = res.get("share_url") or res.get("url") or res.get("_raw") or ""
+    project_id, share_url = _extract_artifact_urls(res)
     with conn() as c:
         cur = c.execute(
             "INSERT INTO artifacts (opportunity_id, kind, gsk_job_id, share_url, expires_at) VALUES (?, ?, ?, ?, ?)",
             (
                 opportunity_id,
                 "deck",
-                res.get("task_id") or res.get("job_id") or "",
+                project_id,
                 share_url,
                 (datetime.utcnow() + timedelta(minutes=1440)).isoformat(),
             ),
         )
         art_id = int(cur.lastrowid)
-    return {"id": art_id, "kind": "deck", "share_url": share_url, "raw": res}
+    return {"id": art_id, "kind": "deck", "share_url": share_url, "project_id": project_id, "raw": res}
 
 
 def generate_quote(opportunity_id: int, ctx: dict) -> dict:
@@ -84,14 +124,14 @@ def generate_quote(opportunity_id: int, ctx: dict) -> dict:
     if not opp:
         raise ValueError(f"opp {opportunity_id} not found")
     res = gsk_client.create_sheet(_quote_prompt(opp, ctx))
-    share_url = res.get("url") or res.get("share_url") or ""
+    project_id, share_url = _extract_artifact_urls(res)
     with conn() as c:
         cur = c.execute(
             "INSERT INTO artifacts (opportunity_id, kind, gsk_job_id, share_url) VALUES (?, ?, ?, ?)",
-            (opportunity_id, "quote", res.get("spreadsheet_id", ""), share_url),
+            (opportunity_id, "quote", project_id, share_url),
         )
         art_id = int(cur.lastrowid)
-    return {"id": art_id, "kind": "quote", "share_url": share_url, "raw": res}
+    return {"id": art_id, "kind": "quote", "share_url": share_url, "project_id": project_id, "raw": res}
 
 
 # ---------------------------------------------------------------------------
