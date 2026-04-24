@@ -623,17 +623,25 @@ def run_search(
                 pass
 
         if wait_for_login_seconds > 0:
-            # Singpass handoff: navigate to a doc-gated page, poll until downloadable
-            page.goto(DEFAULT_VALIDATE_DOC_URL, wait_until="domcontentloaded")
-            page.wait_for_timeout(2000)
-            resolve_multiple_windows(page)
+            # Singpass handoff: open the user's dashboard (the natural post-login landing),
+            # let them auth, then poll the validate-doc URL explicitly each tick.
+            # (Singpass redirects to MY DASHBOARD, not back to the validate URL — so
+            # page.reload() would just refresh the dashboard and never detect doc access.)
+            page.goto("https://www.gebiz.gov.sg/", wait_until="domcontentloaded")
+            page.wait_for_timeout(1500)
             if on_login_state:
                 try: on_login_state("browser_open")
                 except Exception: pass
             login_deadline = time.time() + wait_for_login_seconds
             logged_in = False
             while time.time() < login_deadline:
-                resolve_multiple_windows(page)
+                # Navigate to the gated doc URL each tick — cookies apply across tabs
+                try:
+                    page.goto(DEFAULT_VALIDATE_DOC_URL, wait_until="domcontentloaded", timeout=10000)
+                    page.wait_for_timeout(800)
+                    resolve_multiple_windows(page)
+                except Exception:
+                    pass
                 if documents_are_downloadable(page):
                     logged_in = True
                     if on_login_state:
@@ -641,12 +649,6 @@ def run_search(
                         except Exception: pass
                     break
                 time.sleep(3)
-                # Refresh the gated page so the downloadable state can update
-                try:
-                    page.reload(wait_until="domcontentloaded")
-                    page.wait_for_timeout(500)
-                except Exception:
-                    pass
             if not logged_in and on_login_state:
                 try: on_login_state("login_timeout")
                 except Exception: pass

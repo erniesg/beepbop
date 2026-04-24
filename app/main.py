@@ -514,8 +514,10 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                         f"🔍 <b>Scrape #{job_id} started (docs mode)</b>\n"
                         f"Keywords: <code>{_html_escape(' '.join(kws))}</code>\n"
                         f"A Chrome window will pop up on your Mac. <b>Log in with Singpass</b> — "
-                        f"I'll wait 2 min then start downloading tender PDFs.\n"
-                        f"Expect DMs as login is detected + files download."
+                        f"I'll start downloading tender PDFs as soon as your session is detected "
+                        f"(polling every 3s, up to 2 min max wait).\n"
+                        f"Your Singpass session is saved to <code>~/.beepbop/gebiz_profile</code>, "
+                        f"so subsequent <code>/scrape_docs</code> usually skip the QR."
                     )
                 else:
                     send_text(

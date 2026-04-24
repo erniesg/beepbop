@@ -132,7 +132,9 @@
       </tr>
     </thead>
     <tbody>
-      {% for o in opportunities | sort(attribute='match_score', reverse=true) %}
+      {% set scored = opportunities | rejectattr('match_score', 'none') | list | sort(attribute='match_score', reverse=true) %}
+      {% set unscored = opportunities | selectattr('match_score', 'none') | list %}
+      {% for o in (scored + unscored) %}
       <tr class="border-t border-slate-100 hover:bg-slate-50 transition-colors cursor-pointer"
           onclick="location.href='/opportunities/{{ o.id }}'">
         <td class="px-4 py-3">
