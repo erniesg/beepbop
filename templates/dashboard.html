@@ -7,33 +7,109 @@
     <p class="text-sm text-slate-500 mt-0.5">Scored against your creative-studio context · click any row for pitch artifacts + compliance check</p>
   </div>
   <div class="flex gap-2 items-center">
-    <span id="scrape-status" class="text-xs text-slate-500 min-h-[1.5rem]"></span>
+    <input id="scrape-kws" type="text" placeholder="custom keywords (space-separated) — blank = auto from context"
+           class="px-3 py-1.5 text-sm border border-slate-300 rounded w-96 focus:outline-none focus:ring-2 focus:ring-slate-300">
     <button hx-post="/api/score-all" hx-swap="none"
             hx-on::after-request="setTimeout(()=>location.reload(), 2000)"
             class="px-3 py-1.5 bg-slate-900 text-white rounded text-sm hover:bg-slate-800 transition">
       Score all
     </button>
-    <button id="scrape-btn"
-            hx-post="/api/scrapes" hx-swap="none"
-            hx-disabled-elt="this"
-            hx-on::before-request="document.getElementById('scrape-status').innerText = '⏳ Kicking scrape…'; this.classList.add('opacity-50')"
-            hx-on::after-request="
-              const s = document.getElementById('scrape-status');
-              this.classList.remove('opacity-50');
-              if (event.detail.successful) {
-                const r = JSON.parse(event.detail.xhr.responseText);
-                s.innerHTML = '🔍 Scrape #' + r.job_id + ' running — check <a href=\'/api/scrape-status\' class=\'underline\'>/api/scrape-status</a> or Telegram /jobs';
-              } else {
-                const code = event.detail.xhr.status;
-                if (code === 409) { s.innerText = '⏳ Already scraping — wait for current job'; }
-                else if (code === 401) { s.innerText = '🔒 Not signed in — refresh page'; }
-                else { s.innerText = '✗ Failed (HTTP ' + code + ')'; }
-              }"
-            class="px-3 py-1.5 border border-slate-300 rounded text-sm hover:bg-slate-50 transition">
+    <button id="scrape-btn" onclick="kickScrape()"
+            class="px-3 py-1.5 border border-slate-300 rounded text-sm hover:bg-slate-50 transition whitespace-nowrap disabled:opacity-50">
       Scrape GeBIZ
     </button>
   </div>
 </div>
+
+<!-- Rolling status — polls /api/scrape-status every 5s while any job is running -->
+<div id="scrape-status-panel" class="mt-3 mb-3 text-xs text-slate-500 min-h-[1.5rem]">
+  <div id="scrape-status"></div>
+  <div id="scrape-jobs-live" class="mt-1 space-y-0.5"></div>
+</div>
+<script>
+(function(){
+  async function kickScrape(){
+    const btn = document.getElementById('scrape-btn');
+    const s = document.getElementById('scrape-status');
+    const kwsInput = document.getElementById('scrape-kws').value.trim();
+    const keywords = kwsInput ? kwsInput.split(/[\s,]+/).filter(Boolean) : [];
+    btn.disabled = true;
+    s.innerText = '⏳ Kicking scrape…';
+    try {
+      const r = await fetch('/api/scrapes', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({keywords}),
+      });
+      if (r.ok) {
+        const d = await r.json();
+        s.innerHTML = '🔍 Scrape #' + d.job_id + ' kicked with [' + (d.keywords||[]).join(', ') + ']';
+        if (window._startScrapePoll) window._startScrapePoll();
+      } else if (r.status === 409) {
+        const err = await r.json().catch(()=>({detail:'already running'}));
+        s.innerText = '⏳ ' + (err.detail || 'Already scraping — wait');
+        if (window._startScrapePoll) window._startScrapePoll();
+      } else if (r.status === 401) {
+        s.innerText = '🔒 Not signed in — refresh page';
+      } else {
+        s.innerText = '✗ Failed (HTTP ' + r.status + ')';
+      }
+    } catch(e){
+      s.innerText = '✗ Network error: ' + e.message;
+    } finally {
+      btn.disabled = false;
+    }
+  }
+  window.kickScrape = kickScrape;
+})();
+
+(function(){
+  let pollTimer = null;
+  function renderJob(j){
+    const emoji = ({running:'⏳', done:'✅', failed:'❌', queued:'📋'})[j.status] || '·';
+    const kws = (j.keywords||[]).slice(0,5).join(', ') + ((j.keywords||[]).length>5 ? ' +'+((j.keywords||[]).length-5) : '');
+    let line = `${emoji} #${j.id} ${j.status} · [${kws}]`;
+    if (j.status === 'running' && j.started_at){
+      const elapsed = Math.round((Date.now() - new Date(j.started_at+'Z').getTime())/1000);
+      line += ` · ${elapsed}s elapsed`;
+    } else if (j.status === 'done'){
+      line += ` · ${j.rows_ingested||0} rows`;
+    } else if (j.status === 'failed'){
+      line += ` · ${(j.error||'').slice(0,80)}`;
+    }
+    return line;
+  }
+  async function poll(){
+    try {
+      const r = await fetch('/api/scrape-status', {credentials:'same-origin'});
+      if (!r.ok) return;
+      const d = await r.json();
+      const jobs = d.jobs || [];
+      const live = document.getElementById('scrape-jobs-live');
+      if (!jobs.length){ live.innerHTML = ''; return; }
+      live.innerHTML = jobs.slice(0,3).map(j => '<div>'+renderJob(j)+'</div>').join('');
+      const anyRunning = jobs.some(j => j.status === 'running' || j.status === 'queued');
+      if (!anyRunning && pollTimer){
+        clearInterval(pollTimer); pollTimer = null;
+        // One last refresh of table once scrape completes
+        setTimeout(()=>location.reload(), 2000);
+      }
+    } catch(e){}
+  }
+  window._startScrapePoll = function(){
+    if (pollTimer) return;
+    poll();
+    pollTimer = setInterval(poll, 5000);
+  };
+  // On page load, if any job is running, start polling
+  poll().then(()=>{
+    fetch('/api/scrape-status', {credentials:'same-origin'}).then(r=>r.json()).then(d=>{
+      if ((d.jobs||[]).some(j=>j.status==='running'||j.status==='queued')) window._startScrapePoll();
+    }).catch(()=>{});
+  });
+})();
+</script>
 
 {% if not opportunities %}
 <div class="bg-white border border-slate-200 rounded p-8 text-center text-slate-500">
