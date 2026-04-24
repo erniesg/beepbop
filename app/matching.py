@@ -323,3 +323,43 @@ def extract_prerequisites(opp: dict, ctx: dict) -> list[dict]:
         if _os.getenv("BEEPBOP_DEBUG"):
             import traceback; traceback.print_exc()
         return []
+
+
+KEYWORDS_SECTION_RE = re.compile(
+    r"^#+\s*target tenders\s*\n(.*?)(?:^#|\Z)",
+    re.IGNORECASE | re.MULTILINE | re.DOTALL,
+)
+
+
+def keywords_from_context(ctx: dict) -> list[str]:
+    """Extract GeBIZ search keywords from the user's context markdown.
+
+    Pulls from a '## Target tenders' section if present; otherwise falls back
+    to common creative terms. Returns a de-duped, lowercased list.
+    """
+    md = (ctx.get("profile_md") or "").strip()
+    if not md:
+        return []
+    m = KEYWORDS_SECTION_RE.search(md)
+    if not m:
+        return []
+    block = m.group(1)
+    # Heuristic extract: strip markdown emphasis, grab alnum tokens
+    block = re.sub(r"[\*_`]", "", block)
+    # Handle lines like "Terms GeBIZ search should weigh heavily: artist, photography, …"
+    # Pull phrases that look like keyword candidates (letters, length 3-20)
+    candidates = re.findall(r"\b[a-zA-Z][a-zA-Z\-]{2,19}\b", block)
+    stop = {
+        "terms", "gebiz", "search", "should", "weigh", "heavily",
+        "deprioritise", "de", "prioritise", "priority", "tenders", "target",
+        "and", "the", "for", "with", "that", "this", "are", "not", "but",
+    }
+    out: list[str] = []
+    seen: set[str] = set()
+    for c in candidates:
+        k = c.lower()
+        if k in stop or k in seen:
+            continue
+        seen.add(k)
+        out.append(k)
+    return out[:10]  # cap to avoid scrape timeouts

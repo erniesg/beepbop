@@ -154,6 +154,9 @@ def send_opportunity_card(chat_id: str | int, opp: dict) -> dict:
         f"closing {closing}\n"
         f"match: {score_badge}"
     )
+    detail_url = opp.get("detail_url") or ""
+    if detail_url:
+        text += f"\n<a href=\"{detail_url}\">Open on GeBIZ ↗</a>"
     if opp.get("match_rationale"):
         text += f"\n\n<i>{_html_escape(opp['match_rationale'][:300])}</i>"
 

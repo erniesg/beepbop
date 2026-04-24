@@ -456,35 +456,23 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                 from app.telegram_bot import _html_escape
                 kws = [w.strip() for w in (args or "").replace(",", " ").split() if w.strip()]
                 if not kws:
-                    kws = ["artist", "photography", "videography", "design", "workshop", "programme", "video", "media"]
+                    # Pull keywords from the default context's "Target tenders" section
+                    from app.matching import keywords_from_context
+                    kws = keywords_from_context(_load_default_context()) or [
+                        "artist", "photography", "videography", "design", "workshop", "programme", "video", "media"
+                    ]
                 try:
                     job_id = create_scrape_job(kws, owner_id=None)
                 except ScrapeAlreadyRunning as e:
                     send_text(chat_id, f"⏳ Already scraping: <code>{_html_escape(str(e))}</code>\nUse <b>/jobs</b> to check progress.")
                     return {"ok": True, "command": cmd, "stage": "already_running"}
 
-                async def _run_and_notify(jid: int, words: list[str]):
-                    try:
-                        result = await run_scrape_job(jid, words)
-                        send_text(
-                            chat_id,
-                            f"✅ <b>Scrape #{jid} done</b>\n"
-                            f"Keywords: <code>{_html_escape(' '.join(words))}</code>\n"
-                            f"Ingested: {result.get('rows_ingested',0)} new/updated rows\n"
-                            f"→ Use <b>/list</b> to see top matches."
-                        )
-                    except Exception as exc:
-                        send_text(
-                            chat_id,
-                            f"❌ <b>Scrape #{jid} failed</b>\n<code>{_html_escape(str(exc)[:300])}</code>"
-                        )
-
-                background_tasks.add_task(_run_and_notify, job_id, kws)
+                background_tasks.add_task(run_scrape_job, job_id, kws, 3, str(chat_id))
                 send_text(
                     chat_id,
                     f"🔍 <b>Scrape #{job_id} started</b>\n"
                     f"Keywords: <code>{_html_escape(' '.join(kws))}</code>\n"
-                    f"Playwright runs public-listing mode (no Singpass needed). ETA: 1-5 min depending on GeBIZ response.\n"
+                    f"Playwright runs public-listing mode (no Singpass needed). ETA 1–5 min.\n"
                     f"I'll DM when done, or <b>/jobs</b> to poll."
                 )
             elif cmd == "/jobs":
@@ -669,14 +657,22 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
         from app.telegram_bot import _html_escape as _he
         rate_lines = "\n".join(f"  • <code>{_he(k)}</code>: SGD {v}" for k, v in list(rates.items())[:6]) or "  <i>(no rates on file)</i>"
         title_esc = _he(opp["title"][:80])
+        # Mention existing quote if any — deck will cite its URL
+        from app.outreach import _existing_quote_for
+        existing_quote = _existing_quote_for(opp_id) if action == "deck" else None
+        quote_note = (
+            f"\n\n<i>Will reference existing quote: <a href=\"{existing_quote['share_url']}\">open</a></i>"
+            if existing_quote else ""
+        )
         if action == "deck":
             preview = (f"<b>Confirm deck generation:</b>\n<i>{title_esc}</i>\n\n"
-                       f"Will include: about us, understanding of opp, approach, team, timeline, pricing headline, next steps.\n\n"
-                       f"ETA: ~60-120s")
+                       f"Will include: about us, understanding of opp, approach, team, timeline, pricing headline, next steps."
+                       f"{quote_note}\n\n"
+                       f"ETA: 2–4 min (slide agent is slower than sheets)")
         else:
             preview = (f"<b>Confirm quote generation:</b>\n<i>{title_esc}</i>\n\n"
                        f"Will use your rates:\n{rate_lines}\n\n"
-                       f"ETA: ~60-120s")
+                       f"ETA: 60–120s")
         kb = [[{"text": "✓ Generate", "callback_data": f"{action}_go:{opp_id}"},
                {"text": "✕ Cancel", "callback_data": f"cancel:{opp_id}"}]]
         import httpx as _httpx
@@ -690,12 +686,40 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
         opp_id = parsed["outreach_id"]
         kind = action.replace("_go", "")
         answer_callback(callback_id, f"Starting {kind} generation — please wait")
-        send_text(chat_id, f"⏳ <b>{kind.capitalize()}</b> generation started for opp #{opp_id}. Genspark spins up a Claw VM, generates content, returns a share URL. ETA ~60-120s.")
-        def _gen():
+        # Initial ETA copy per kind — slides are slower than sheets
+        initial_eta = "2–4 min" if kind == "deck" else "60–120s"
+        send_text(
+            chat_id,
+            f"⏳ <b>{kind.capitalize()}</b> generation started for opp #{opp_id}. "
+            f"Genspark spins up a Claw VM, generates content, returns a share URL. ETA {initial_eta}.\n"
+            f"<i>I'll ping every 60s while it's cooking.</i>"
+        )
+
+        async def _gen_with_heartbeat():
+            import asyncio as _asyncio
             from app.outreach import generate_deck, generate_quote
             from app.telegram_bot import _html_escape as _he
+            # Heartbeat loop — runs until cancelled
+            stopped = _asyncio.Event()
+            async def _heartbeat():
+                elapsed = 0
+                while not stopped.is_set():
+                    try:
+                        await _asyncio.wait_for(stopped.wait(), timeout=60)
+                        return  # stop event set → exit quietly
+                    except _asyncio.TimeoutError:
+                        elapsed += 60
+                        try:
+                            send_text(chat_id, f"⏳ Still generating {kind} for opp #{opp_id}… {elapsed}s elapsed.")
+                        except Exception:
+                            pass
+            hb_task = _asyncio.create_task(_heartbeat())
             try:
-                art = (generate_deck if kind == "deck" else generate_quote)(opp_id, _load_default_context())
+                art = await _asyncio.to_thread(
+                    generate_deck if kind == "deck" else generate_quote,
+                    opp_id,
+                    _load_default_context(),
+                )
                 url = art.get("share_url") or ""
                 proj = art.get("project_id") or ""
                 if url:
@@ -704,14 +728,27 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     if proj:
                         body += f"\n<code>project_id: {_he(proj)}</code>"
                 elif proj:
-                    body = (f"Generated but no share URL returned.\n"
-                            f"Find it at <a href=\"https://www.genspark.ai/agents?id={proj}\">www.genspark.ai/agents?id={_he(proj)}</a>")
+                    body = (
+                        f"Generated but no share URL returned.\n"
+                        f"Find it at <a href=\"https://www.genspark.ai/agents?id={proj}\">"
+                        f"www.genspark.ai/agents?id={_he(proj)}</a>"
+                    )
                 else:
                     body = "<i>(generated, but URL + project_id missing — see /tmp/beepbop-gsk-responses.jsonl)</i>"
                 send_text(chat_id, f"✅ <b>{kind.capitalize()} ready</b>\n{body}")
             except Exception as e:
-                send_text(chat_id, f"❌ <b>{kind} failed</b>\n<code>{_he(str(e)[:300])}</code>\n\nRetry with the same button.")
-        background_tasks.add_task(_gen)
+                send_text(
+                    chat_id,
+                    f"❌ <b>{kind} failed</b>\n<code>{_he(str(e)[:300])}</code>\n\nRetry with the same button."
+                )
+            finally:
+                stopped.set()
+                try:
+                    await hb_task
+                except Exception:
+                    pass
+
+        background_tasks.add_task(_gen_with_heartbeat)
         return {"ok": True, "action": action}
 
     if action == "cancel":
@@ -837,7 +874,8 @@ async def api_scrape(request: Request, background_tasks: BackgroundTasks):
         body = await request.json()
     except Exception:
         pass
-    keywords = body.get("keywords") or [
+    from app.matching import keywords_from_context
+    keywords = body.get("keywords") or keywords_from_context(_load_default_context()) or [
         "artist", "photography", "videography", "design", "workshop", "programme", "video", "media"
     ]
     from app.scraper import ScrapeAlreadyRunning, create_scrape_job, run_scrape_job
@@ -845,7 +883,8 @@ async def api_scrape(request: Request, background_tasks: BackgroundTasks):
         job_id = create_scrape_job(keywords, user["id"])
     except ScrapeAlreadyRunning as e:
         raise HTTPException(409, str(e))
-    background_tasks.add_task(run_scrape_job, job_id, keywords)
+    # notify_chat_id=None → falls back to configured TELEGRAM_CHAT_ID (admin)
+    background_tasks.add_task(run_scrape_job, job_id, keywords, 3, None)
     return {"job_id": job_id, "keywords": keywords, "status": "running"}
 
 

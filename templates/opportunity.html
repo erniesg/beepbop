@@ -12,6 +12,10 @@
       closing {{ opp.closing }}
       <span class="text-slate-300 mx-1.5">·</span>
       <span class="uppercase text-xs tracking-wider">{{ opp.status }}</span>
+      {% if opp.detail_url %}
+      <span class="text-slate-300 mx-1.5">·</span>
+      <a href="{{ opp.detail_url }}" target="_blank" rel="noopener" class="text-slate-700 underline hover:text-slate-900">open on GeBIZ ↗</a>
+      {% endif %}
     </p>
   </div>
   {% if opp.match_score is not none %}

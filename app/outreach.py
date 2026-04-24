@@ -28,7 +28,28 @@ from app.db import (
 # Artifact generation
 # ---------------------------------------------------------------------------
 
+def _existing_quote_for(opp_id: int) -> dict | None:
+    """Return the most recent quote artifact for this opp if one exists."""
+    with conn() as c:
+        row = c.execute(
+            "SELECT id, share_url, gsk_job_id FROM artifacts "
+            "WHERE opportunity_id = ? AND kind = 'quote' AND share_url != '' "
+            "ORDER BY id DESC LIMIT 1",
+            (opp_id,),
+        ).fetchone()
+    return {"id": row["id"], "share_url": row["share_url"], "project_id": row["gsk_job_id"]} if row else None
+
+
 def _deck_prompt(opp: dict, ctx: dict) -> str:
+    quote = _existing_quote_for(opp["id"])
+    quote_line = ""
+    if quote and quote.get("share_url"):
+        quote_line = (
+            f"\n\nIMPORTANT — a quotation has already been generated for this opportunity: "
+            f"{quote['share_url']}\n"
+            f"On the 'Pricing headline' slide, cite this exact URL and keep numbers consistent "
+            f"with the rates in our context. Do NOT invent new prices."
+        )
     return (
         f"Create a 6-8 slide pitch deck for the following Singapore government tender.\n\n"
         f"Our company context:\n{ctx.get('profile_md','')[:1500]}\n\n"
@@ -36,7 +57,8 @@ def _deck_prompt(opp: dict, ctx: dict) -> str:
         f"- Title: {opp.get('title')}\n"
         f"- Agency: {opp.get('agency')}\n"
         f"- Category: {opp.get('procurement_category')}\n"
-        f"- Closing: {opp.get('closing')}\n\n"
+        f"- Closing: {opp.get('closing')}\n"
+        f"{quote_line}\n\n"
         f"Slides: (1) About us, (2) Understanding of the opportunity, "
         f"(3) Proposed approach, (4) Team + past work, (5) Timeline, (6) Pricing headline, "
         f"(7) Why us, (8) Next steps."

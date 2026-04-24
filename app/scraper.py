@@ -47,9 +47,27 @@ def create_scrape_job(keywords: list[str], owner_id: int | None) -> int:
         return int(cur.lastrowid)
 
 
-async def run_scrape_job(job_id: int, keywords: list[str], max_pages: int = 3) -> dict:
-    """Execute a previously-created scrape job. Ingests results, updates status."""
+async def run_scrape_job(
+    job_id: int,
+    keywords: list[str],
+    max_pages: int = 3,
+    notify_chat_id: str | None = None,
+) -> dict:
+    """Execute a previously-created scrape job. Ingests results, updates status.
+
+    On completion (done or failed), emits a Telegram DM to notify_chat_id (if
+    provided) or the configured admin chat_id. Always safe — failures to DM
+    are swallowed so the scrape result is still returned.
+    """
     settings = get_settings()
+
+    def _notify(text: str) -> None:
+        try:
+            from app.telegram_bot import send_text
+            send_text(notify_chat_id, text)
+        except Exception:
+            pass  # DM is best-effort; don't fail the job
+
     try:
         from app.scraper_core import run_search
 
@@ -86,6 +104,11 @@ async def run_scrape_job(job_id: int, keywords: list[str], max_pages: int = 3) -
                 "UPDATE scrape_jobs SET status='done', rows_ingested=?, finished_at=? WHERE id=?",
                 (rows, datetime.utcnow().isoformat(), job_id),
             )
+        _notify(
+            f"✅ <b>Scrape #{job_id} done</b>\n"
+            f"Keywords: <code>{' '.join(keywords)[:120]}</code>\n"
+            f"Ingested: {rows} new/updated rows — use <b>/list</b>."
+        )
         return {"job_id": job_id, "rows_ingested": rows, "status": "done"}
 
     except Exception as e:
@@ -95,6 +118,7 @@ async def run_scrape_job(job_id: int, keywords: list[str], max_pages: int = 3) -
                 "UPDATE scrape_jobs SET status='failed', error=?, finished_at=? WHERE id=?",
                 (err[:500], datetime.utcnow().isoformat(), job_id),
             )
+        _notify(f"❌ <b>Scrape #{job_id} failed</b>\n<code>{err[:300]}</code>")
         raise
 
 
