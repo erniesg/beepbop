@@ -81,6 +81,51 @@
 </div>
 
 <div class="mt-8 pt-6 border-t border-slate-100">
+  <h3 class="font-semibold text-sm text-slate-900 mb-3">Pricing strategy <span class="text-xs font-normal text-slate-400 ml-1">competitive analysis</span></h3>
+  <div id="pricing-card" class="text-sm">
+    <button id="pricing-btn" onclick="runPricing({{ opp.id }})"
+            class="px-3 py-1.5 border border-slate-300 rounded text-xs hover:bg-slate-50 transition disabled:opacity-50">
+      Analyse pricing
+    </button>
+    <span id="pricing-status" class="ml-2 text-xs text-slate-500"></span>
+  </div>
+</div>
+<script>
+async function runPricing(oppId){
+  const btn = document.getElementById('pricing-btn');
+  const card = document.getElementById('pricing-card');
+  const status = document.getElementById('pricing-status');
+  btn.disabled = true;
+  status.innerText = '⏳ Claude analysing similar opps + your rates…';
+  try {
+    const r = await fetch('/api/opportunities/'+oppId+'/pricing', {method:'POST', credentials:'same-origin'});
+    if (!r.ok){ status.innerText = '✗ Failed (HTTP '+r.status+')'; btn.disabled=false; return; }
+    const d = await r.json();
+    const pr = d.price_range || {};
+    const assump = (d.key_assumptions||[]).map(a=>'<li class="ml-4">'+a+'</li>').join('');
+    card.innerHTML = `
+      <div class="grid grid-cols-3 gap-4 mb-3">
+        <div><div class="text-xs text-slate-400 uppercase tracking-wider">Range</div>
+          <div class="text-lg font-semibold tabular-nums">SGD ${(pr.min||0).toLocaleString()} – ${(pr.max||0).toLocaleString()}</div>
+          <div class="text-xs text-slate-500">median ${(pr.median||0).toLocaleString()}</div></div>
+        <div><div class="text-xs text-slate-400 uppercase tracking-wider">Suggested bid</div>
+          <div class="text-lg font-semibold tabular-nums text-emerald-700">SGD ${(d.suggested_bid||0).toLocaleString()}</div></div>
+        <div><div class="text-xs text-slate-400 uppercase tracking-wider">Confidence</div>
+          <div class="text-lg font-medium">${d.confidence||'medium'}</div>
+          <div class="text-xs text-slate-500">sample n=${d.sample_size||0}</div></div>
+      </div>
+      <p class="text-sm text-slate-700 italic">"${(d.rationale||'').replace(/"/g,'&quot;')}"</p>
+      ${assump ? '<div class="mt-2"><div class="text-xs text-slate-400 uppercase tracking-wider">Assumptions</div><ul class="text-xs text-slate-600 list-disc">'+assump+'</ul></div>' : ''}
+      <button onclick="runPricing(${oppId})" class="mt-3 px-2 py-1 text-xs border border-slate-200 rounded hover:bg-slate-50">Re-analyse</button>
+    `;
+  } catch(e){
+    status.innerText = '✗ '+e.message;
+    btn.disabled = false;
+  }
+}
+</script>
+
+<div class="mt-8 pt-6 border-t border-slate-100">
   <h3 class="font-semibold text-sm text-slate-900 mb-3">Artifacts</h3>
   <div class="flex gap-2">
     <button hx-post="/api/opportunities/{{ opp.id }}/artifacts/deck" hx-swap="none"

@@ -363,3 +363,105 @@ def keywords_from_context(ctx: dict) -> list[str]:
         seen.add(k)
         out.append(k)
     return out[:10]  # cap to avoid scrape timeouts
+
+
+# ---------------------------------------------------------------------------
+# Pricing advisor (issues/11)
+# ---------------------------------------------------------------------------
+
+PRICING_SYSTEM = (
+    "You are a pricing strategist advising a Singapore creative SME bidding on "
+    "government tenders (GeBIZ). Given the current opportunity, a sample of "
+    "similar opportunities we've scraped, and the vendor's rates, return a "
+    "principled price range + a suggested bid. Be concrete: use SGD figures, "
+    "cite how you derived the range from the inputs, and factor in Singapore "
+    "gov tender norms (MOE Schools often picks lowest-credible; NAC/NLB value "
+    "creative quality; statutory boards weigh compliance heavily).\n\n"
+    "Respond ONLY with a JSON object matching this schema — no prose, no "
+    "markdown fences:\n"
+    "{\n"
+    '  "price_range": {"min": <int SGD>, "max": <int SGD>, "median": <int SGD>},\n'
+    '  "suggested_bid": <int SGD>,\n'
+    '  "rationale": "<2-4 sentences, no hedging>",\n'
+    '  "confidence": "low" | "medium" | "high",\n'
+    '  "sample_size": <int — how many similar opps informed the range>,\n'
+    '  "key_assumptions": ["…", "…"]\n'
+    "}\n"
+)
+
+
+def _similar_opportunities(opp: dict, limit: int = 8) -> list[dict]:
+    """Fetch up to `limit` other opportunities with overlapping category or keyword.
+
+    For demo-scale DBs (tens to hundreds of rows) this is cheap enough to be a
+    simple SQL query. Later: swap in vector similarity + closed-opp award data.
+    """
+    from app.db import conn
+    category = (opp.get("procurement_category") or "").strip()
+    mk = (opp.get("matched_keyword") or "").strip()
+    with conn() as c:
+        rows = c.execute(
+            "SELECT id, title, agency, procurement_category, matched_keyword, closing, status "
+            "FROM opportunities WHERE id != ? AND (procurement_category = ? OR matched_keyword = ?) "
+            "ORDER BY id DESC LIMIT ?",
+            (opp.get("id"), category, mk, limit),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def advise_pricing(opp: dict, ctx: dict, similar: list[dict] | None = None) -> dict:
+    """Return a price range + suggestion for this opp, grounded in rates + similar opps."""
+    if similar is None:
+        similar = _similar_opportunities(opp)
+    rates_raw = ctx.get("rates") or "{}"
+    try:
+        rates = json.loads(rates_raw) if isinstance(rates_raw, str) else rates_raw
+    except json.JSONDecodeError:
+        rates = {}
+
+    user_body = (
+        f"CURRENT OPPORTUNITY:\n"
+        f"  title: {opp.get('title','')}\n"
+        f"  agency: {opp.get('agency','')}\n"
+        f"  category: {opp.get('procurement_category','')}\n"
+        f"  closing: {opp.get('closing','')}\n\n"
+        f"VENDOR RATES (SGD):\n{json.dumps(rates, indent=2)}\n\n"
+        f"VENDOR PROFILE (short):\n{(ctx.get('profile_md') or '')[:800]}\n\n"
+        f"SIMILAR SCRAPED OPPORTUNITIES (for anchoring — award prices not yet "
+        f"collected, so reason from category + scope + agency patterns):\n"
+        + "\n".join(
+            f"  - [{o.get('agency','')}] {o.get('title','')[:120]} (cat: {o.get('procurement_category','')[:40]}, status: {o.get('status','')})"
+            for o in (similar or [])
+        )
+        + "\n"
+    )
+
+    try:
+        text = _claude_with_retry(PRICING_SYSTEM, user_body, max_tokens=1200)
+        text = re.sub(r"^```(?:json)?|```$", "", text, flags=re.MULTILINE).strip()
+        data = json.loads(text)
+        pr = data.get("price_range") or {}
+        return {
+            "price_range": {
+                "min": int(pr.get("min") or 0),
+                "max": int(pr.get("max") or 0),
+                "median": int(pr.get("median") or 0),
+            },
+            "suggested_bid": int(data.get("suggested_bid") or 0),
+            "rationale": (data.get("rationale") or "").strip(),
+            "confidence": data.get("confidence") or "medium",
+            "sample_size": int(data.get("sample_size") or len(similar or [])),
+            "key_assumptions": data.get("key_assumptions") or [],
+        }
+    except Exception as e:
+        import os as _os
+        if _os.getenv("BEEPBOP_DEBUG"):
+            import traceback; traceback.print_exc()
+        return {
+            "price_range": {"min": 0, "max": 0, "median": 0},
+            "suggested_bid": 0,
+            "rationale": f"Pricing advisor failed: {type(e).__name__}: {str(e)[:200]}",
+            "confidence": "low",
+            "sample_size": 0,
+            "key_assumptions": [],
+        }

@@ -292,6 +292,19 @@ def api_prerequisites(request: Request, opp_id: int):
     return {"prerequisites": items}
 
 
+@app.post("/api/opportunities/{opp_id}/pricing")
+def api_pricing(request: Request, opp_id: int):
+    if not current_user(request):
+        raise HTTPException(401, "not authenticated")
+    from app.db import get_opportunity
+    from app.matching import advise_pricing
+    opp = get_opportunity(opp_id)
+    if not opp:
+        raise HTTPException(404, "opportunity not found")
+    ctx = _load_default_context()
+    return advise_pricing(opp, ctx)
+
+
 @app.post("/api/opportunities/{opp_id}/artifacts/deck")
 def api_generate_deck(request: Request, opp_id: int):
     if not current_user(request):
@@ -378,6 +391,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     "/forget &lt;target&gt; — clear (all, preferences, rates, or a key)\n"
                     "/scrape [keywords] — rescan GeBIZ (e.g. <code>/scrape photography workshop</code>)\n"
                     "/jobs — recent scrape jobs + status\n"
+                    "/pricing &lt;id&gt; — competitive pricing analysis for an opp\n"
                     "/help — this message\n\n"
                     "<b>Flow</b>\n"
                     "1. /list → opportunities scored against your context\n"
@@ -483,6 +497,48 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     f"Playwright runs public-listing mode (no Singpass needed). ETA 1–5 min.\n"
                     f"I'll DM when done, or <b>/jobs</b> to poll."
                 )
+            elif cmd == "/pricing":
+                from app.telegram_bot import _html_escape
+                opp_id = None
+                try:
+                    opp_id = int((args or "").strip().split()[0])
+                except (ValueError, IndexError):
+                    pass
+                if opp_id is None:
+                    send_text(chat_id, "Usage: <code>/pricing 9</code>")
+                else:
+                    opp = get_opportunity(opp_id)
+                    if not opp:
+                        send_text(chat_id, f"Opportunity {opp_id} not found")
+                    else:
+                        send_text(chat_id, f"💭 Pricing analysis for opp #{opp_id}… ~10-20s.")
+                        async def _advise_and_send():
+                            import asyncio as _asyncio
+                            from app.matching import advise_pricing
+                            try:
+                                res = await _asyncio.to_thread(advise_pricing, opp, _load_default_context())
+                            except Exception as e:
+                                send_text(chat_id, f"❌ Pricing failed: <code>{_html_escape(str(e)[:200])}</code>")
+                                return
+                            pr = res.get("price_range") or {}
+                            rng = f"SGD {pr.get('min',0):,} – {pr.get('max',0):,} (median {pr.get('median',0):,})"
+                            suggest = f"SGD {res.get('suggested_bid',0):,}"
+                            conf = res.get("confidence", "medium")
+                            rationale = _html_escape((res.get("rationale") or "")[:400])
+                            assumps = res.get("key_assumptions") or []
+                            assump_lines = "\n".join(f"  • {_html_escape(a[:120])}" for a in assumps[:3])
+                            body = (
+                                f"💰 <b>Pricing — opp #{opp_id}</b>\n"
+                                f"<i>{_html_escape(opp['title'][:80])}</i>\n\n"
+                                f"<b>Range:</b> {rng}\n"
+                                f"<b>Suggested bid:</b> {suggest}\n"
+                                f"<b>Confidence:</b> {conf} · sample {res.get('sample_size',0)} similar opps\n\n"
+                                f"<i>{rationale}</i>"
+                            )
+                            if assump_lines:
+                                body += f"\n\n<b>Assumptions:</b>\n{assump_lines}"
+                            send_text(chat_id, body)
+                        background_tasks.add_task(_advise_and_send)
             elif cmd == "/jobs":
                 from app.telegram_bot import _html_escape
                 from app.db import conn as _conn
