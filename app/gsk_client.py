@@ -50,14 +50,33 @@ def me() -> dict:
     return _run(["me"])
 
 
+SLIDES_INSTRUCTIONS = (
+    "You are a pitch-deck specialist creating slides for a Singapore creative SME bidding on a government tender. "
+    "Use the user's context (rates, services, past work, preferences) to tailor every slide. "
+    "Keep language clear, professional, and use the tone the user requested. "
+    "Structure: About us, Understanding of the opportunity, Proposed approach, Team + past work, Timeline, Pricing headline, Why us, Next steps."
+)
+
+SHEETS_INSTRUCTIONS = (
+    "You are a quotation specialist for a Singapore creative SME. "
+    "Create a Google Sheets quotation using the user's rates card as the source of truth. "
+    "Columns: Item | Qty | Unit | Rate SGD | Subtotal. "
+    "Include a summary row with subtotal, 9% GST, and grand total. "
+    "Keep line items tied to the tender scope described in the query."
+)
+
+
 def create_slides(prompt: str, task_name: str = "Pitch deck") -> dict:
     """Kick a slide-generation task on Genspark. Returns task id / share URL (async).
 
-    CLI signature confirmed via `gsk help create_task`:
-      gsk create_task slides --task_name <name> --query <prompt>
+    CLI signature: gsk create_task slides --task_name <name> --query <prompt> --instructions <sys>
+    All three flags are runtime-required (help output only lists --task_name/--query; --instructions enforced at invocation).
     """
     return _run(
-        ["create_task", "slides", "--task_name", task_name[:60], "--query", prompt],
+        ["create_task", "slides",
+         "--task_name", task_name[:60],
+         "--query", prompt,
+         "--instructions", SLIDES_INSTRUCTIONS],
         timeout=300,
     )
 
@@ -65,7 +84,10 @@ def create_slides(prompt: str, task_name: str = "Pitch deck") -> dict:
 def create_sheet(prompt: str, task_name: str = "Quotation") -> dict:
     """Create a Google Sheets spreadsheet via create_task (agent-generated)."""
     return _run(
-        ["create_task", "sheets", "--task_name", task_name[:60], "--query", prompt],
+        ["create_task", "sheets",
+         "--task_name", task_name[:60],
+         "--query", prompt,
+         "--instructions", SHEETS_INSTRUCTIONS],
         timeout=300,
     )
 
