@@ -586,20 +586,25 @@ def download_documents_from_detail(page, destination: Path) -> list[str]:
 
 _TAB_COUNT_RE = re.compile(r'(Open|Closed|All)\s*\(\s*(\d+)\s*\)', re.I)
 _MASTER_COUNT_RE = re.compile(r'(\d+)\s+opportunit(?:y|ies)\s+found', re.I)
+_NO_RESULTS_RE = re.compile(r'No\s+opportunit(?:y|ies)\s+found', re.I)
 
 
-def _read_tab_counts(page) -> dict[str, int]:
+def _read_tab_counts(page) -> dict:
     """Capture result counts from the BOListing search-results header.
 
-    Two signals on the page, only one always present:
+    Three signals on the page:
       - "Open (N) / Closed (M) / All (X)" tab labels — appear ONLY when the
         OPEN tab has matches (otherwise GeBIZ hides the tab bar entirely).
-      - "X opportunities found for your search '...'" — always present, the
-        master result count across both tabs.
-    We capture both so the caller can tell "0 anywhere" from "0 open + N
-    closed" — the latter triggers a /scrape_awarded suggestion.
+      - "X opportunities found for your search '...'" — present when matches
+        exist on either tab.
+      - "No opportunity found for your search '...'" — present only when
+        GeBIZ has literally zero results for the keyword, anywhere.
+    Together they let the caller distinguish:
+      - rows>0 → success
+      - rows=0 + master>0 → matches exist but none open → suggest /scrape_awarded
+      - rows=0 + no_results=True → keyword has no matches anywhere → suggest different kw
     """
-    out = {"open": 0, "closed": 0, "all": 0, "master": 0}
+    out = {"open": 0, "closed": 0, "all": 0, "master": 0, "no_results": False}
     try:
         text = page.locator("body").inner_text(timeout=2000)
     except (PlaywrightTimeoutError, PlaywrightError):
@@ -611,6 +616,8 @@ def _read_tab_counts(page) -> dict[str, int]:
     m = _MASTER_COUNT_RE.search(text)
     if m:
         out["master"] = int(m.group(1))
+    if _NO_RESULTS_RE.search(text):
+        out["no_results"] = True
     return out
 
 

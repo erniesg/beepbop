@@ -167,16 +167,21 @@ async def run_scrape_job(
                 "UPDATE scrape_jobs SET status='done', rows_ingested=?, finished_at=? WHERE id=?",
                 (rows, datetime.utcnow().isoformat(), job_id),
             )
-        # Smart hint when 0 rows landed but the search page DID find matches
-        # (just none in the OPEN tab). GeBIZ hides the Open/Closed tab bar
-        # when the open tab is empty, so we rely on the master count
-        # ("N opportunities found") rather than tab_counts.closed.
+        # Smart hint when 0 rows landed — distinguish "GeBIZ has 0 matches at
+        # all" (suggest a different kw) from "matches exist but all closed"
+        # (suggest /scrape_awarded). GeBIZ hides the Open/Closed tab bar when
+        # the open tab is empty, so we rely on the master count + the
+        # "No opportunity found" sentinel from _read_tab_counts.
         hint = ""
         tab_counts = result.get("tab_counts_per_keyword") or {}
         if rows == 0 and not awarded_only:
             kws_with_hits = [
                 kw for kw, tc in tab_counts.items()
                 if tc.get("master", 0) > 0
+            ]
+            kws_no_match = [
+                kw for kw, tc in tab_counts.items()
+                if tc.get("no_results", False) and tc.get("master", 0) == 0
             ]
             if kws_with_hits:
                 kw_list = " ".join(kws_with_hits[:3])
@@ -186,6 +191,12 @@ async def run_scrape_job(
                     f"<code>{kw_list}</code> — none currently open. "
                     f"Try <b>/scrape_awarded {kw_list}</b> for past prices, "
                     f"or <b>/scrape_docs_awarded {kw_list}</b> for prices + tender PDFs."
+                )
+            elif kws_no_match:
+                kw_list = " ".join(kws_no_match[:3])
+                hint = (
+                    f"\nℹ️ GeBIZ has zero matches for <code>{kw_list}</code> "
+                    f"(open OR closed). Try a broader/related keyword."
                 )
         _notify(
             f"✅ <b>Scrape #{job_id} done</b>\n"
