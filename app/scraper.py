@@ -74,12 +74,14 @@ async def run_scrape_job(
     try:
         from app.scraper_core import run_search
 
-        # Persistent profile for docs-mode so the Singpass session survives between runs.
-        # NOTE: we do NOT trust the cookies file alone — server-side sessions expire
-        # independently of the on-disk file. The login wait must run a real probe.
+        # Persistent profile for docs-mode AND awarded-mode — the awarded $ amount
+        # + supplier are Singpass-gated (confirmed: invisible on public pages),
+        # so we reuse cookies from a prior /scrape_docs run. Headless either way;
+        # if the session is stale, awarded fields just come back blank and we
+        # nudge the user to run /scrape_docs to refresh.
         profile_root = (
             Path.home() / ".beepbop" / "gebiz_profile"
-            if with_docs
+            if (with_docs or awarded_only)
             else None
         )
         if profile_root:
