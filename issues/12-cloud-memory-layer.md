@@ -17,13 +17,26 @@ User asked: *"can u look into using claude managed agents and gsk crawl thanks t
 
 | Option | Fit | Pros | Cons |
 |---|---|---|---|
-| **Anthropic Files API + Memory** (filesystem-backed) | ★★★★ | Native Claude; scopes to project/skill; free with API | File-based, not structured; no semantic search |
+| **Claude Agent SDK (`claude-agent-sdk`)** | ★★★ | Same built-in tools as Claude Code (Read/Write/Bash/Hooks/Sessions); runs in Python | Not a managed service; filesystem-backed memory (we still BYO storage); `sessions` resume only within the SDK |
+| **MCP server wrapping our DB** | ★★★★★ | Claude Agent SDK + Claude Code + other agents all read via one protocol; works today | Need to build + host the MCP server |
+| **Anthropic Files API** (filesystem-backed) | ★★★★ | Native Claude; scopes to project/skill; free with API | File-based, not structured; no semantic search |
 | **gsk AI Drive (`gsk aidrive upload`)** | ★★★ | Already installed; stores JSON blobs; Claude can fetch via URL | Not designed as a KV/memory store; no query API |
 | **gsk crawl** | ★ | Could fetch our own `/api/context` endpoint | That's a pull-from-our-db pattern, not a separate store |
-| **Claude Managed Agents** | ★★★ | Has skill/knowledge system; persistent across sessions | Requires different API surface; migration work |
 | **Mem0 / Zep / Letta** | ★★★★ | Dedicated memory platforms; embeddings + retrieval; API-first | Another vendor; paid tier |
 | **Supabase (Postgres + pgvector)** | ★★★★★ | Portable upgrade from SQLite; shared with derivativ.ai; embedded search | ~30 min migration |
 | **Cloudflare Durable Objects + KV** | ★★ | Fits berlayar infra pattern | Overkill for demo |
+
+## Research note: Claude Agent SDK is NOT a managed cloud service
+
+From the official docs (2026-04-24 fetch):
+
+> "Build production AI agents with Claude Code as a library... same tools, agent loop, and context management that power Claude Code, programmable in Python and TypeScript."
+
+It's a **Python/TS library**, not a hosted service. Memory = filesystem + sessions. No shared KV/vector store out of the box.
+
+**Sharing pattern**: Agent SDK + Claude Code + our FastAPI app ALL talk to the same MCP server. MCP is the shared-memory primitive, not the SDK itself.
+
+Migration cost: our current pattern (FastAPI calls `anthropic.messages.create()` with structured JSON prompts) maps directly. We could adopt Agent SDK for tool-using flows (e.g. "give Claude access to our DB + let it make pitching decisions") but it's not required for the memory question.
 
 ## Recommended path (3-stage)
 
