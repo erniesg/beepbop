@@ -637,8 +637,19 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
             from app.telegram_bot import _html_escape as _he
             try:
                 art = (generate_deck if kind == "deck" else generate_quote)(opp_id, _load_default_context())
-                url = art.get("share_url") or "(generated, no URL returned)"
-                send_text(chat_id, f"✅ <b>{kind.capitalize()} ready</b>\n{url}")
+                url = art.get("share_url") or ""
+                proj = art.get("project_id") or ""
+                if url:
+                    link_label = "Open slides" if kind == "deck" else "Open quote"
+                    body = f"<a href=\"{url}\">{link_label}</a>"
+                    if proj:
+                        body += f"\n<code>project_id: {_he(proj)}</code>"
+                elif proj:
+                    body = (f"Generated but no share URL returned.\n"
+                            f"Find it at <a href=\"https://www.genspark.ai/agents?id={proj}\">www.genspark.ai/agents?id={_he(proj)}</a>")
+                else:
+                    body = "<i>(generated, but URL + project_id missing — see /tmp/beepbop-gsk-responses.jsonl)</i>"
+                send_text(chat_id, f"✅ <b>{kind.capitalize()} ready</b>\n{body}")
             except Exception as e:
                 send_text(chat_id, f"❌ <b>{kind} failed</b>\n<code>{_he(str(e)[:300])}</code>\n\nRetry with the same button.")
         background_tasks.add_task(_gen)
