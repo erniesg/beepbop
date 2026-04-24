@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS contexts (
   profile_md TEXT,
   services TEXT,        -- JSON array
   rates TEXT,           -- JSON object
+  preferences TEXT,     -- JSON object (preferred_name, pronouns, tone, signoff)
   keywords TEXT,        -- JSON array — decomposed by Claude
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP

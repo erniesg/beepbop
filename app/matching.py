@@ -63,6 +63,17 @@ def _claude_with_retry(system: str, user_content: str, max_tokens: int, *, retri
 
 def _context_summary(ctx: dict) -> str:
     parts = [ctx.get("name", "context")]
+    # Preferences (name, pronouns, tone) — important for personalised outputs
+    prefs = ctx.get("preferences")
+    if prefs:
+        if isinstance(prefs, str):
+            try:
+                prefs = json.loads(prefs)
+            except json.JSONDecodeError:
+                prefs = {}
+        if prefs:
+            pref_lines = [f"  {k}: {v}" for k, v in prefs.items()]
+            parts.append("User preferences (use these in outputs):\n" + "\n".join(pref_lines))
     if ctx.get("profile_md"):
         parts.append(ctx["profile_md"][:1500])
     services = ctx.get("services")
@@ -224,11 +235,17 @@ Output STRICT JSON only, one of these shapes:
 
 Shape A — direct update:
 {
-  "update_type": "rate" | "service" | "certification" | "profile",
+  "update_type": "rate" | "service" | "certification" | "preference" | "profile",
   "field": "<key>",
   "value": <value — number for rates, string otherwise>,
   "summary": "<short human-readable confirmation>"
 }
+
+"preference" is for identity / communication preferences: preferred name, pronouns, tone, languages. Keys:
+- preferred_name  → e.g. "Ernie"
+- pronouns        → e.g. "she/her", "they/them", "he/him"
+- tone            → e.g. "formal", "casual", "direct"
+- signoff         → e.g. "Warmly, Ernie"
 
 Shape B — needs clarification:
 {
@@ -242,6 +259,10 @@ Examples (direct):
 "My photography half-day is $650" → {"update_type":"rate","field":"photography_halfday","value":650,"summary":"Rate saved: photography half-day = SGD 650"}
 "We're MOE Registered Instructors" → {"update_type":"certification","field":"certifications","value":"MOE Registered Instructor","summary":"Added: MOE Registered Instructor"}
 "We also do motion graphics" → {"update_type":"service","field":"services","value":"motion graphics","summary":"Added service: motion graphics"}
+"Call me Ernie" → {"update_type":"preference","field":"preferred_name","value":"Ernie","summary":"Preferred name: Ernie"}
+"My pronouns are she/her" → {"update_type":"preference","field":"pronouns","value":"she/her","summary":"Pronouns: she/her"}
+"I'm not a man, use they/them" → {"update_type":"preference","field":"pronouns","value":"they/them","summary":"Pronouns: they/them"}
+"Keep emails casual" → {"update_type":"preference","field":"tone","value":"casual","summary":"Tone preference: casual"}
 
 Examples (needs clarification):
 "I charge 6000 for a day" → {"update_type":"needs_clarification","question":"Which service is SGD 6000/day for?","options":["photography","videography","workshop","something else"]}

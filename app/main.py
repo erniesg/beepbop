@@ -509,6 +509,18 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                                     services.append(value)
                                 c.execute("UPDATE contexts SET services=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
                                           (_j.dumps(services), row["id"]))
+                            elif ut == "preference":
+                                prefs_raw = row["preferences"] if "preferences" in row.keys() else None
+                                prefs = _j.loads(prefs_raw) if prefs_raw else {}
+                                prefs[field] = value
+                                try:
+                                    c.execute("UPDATE contexts SET preferences=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                                              (_j.dumps(prefs), row["id"]))
+                                except Exception:
+                                    # Column may not exist yet in this DB — fall back to profile
+                                    new_md = (row["profile_md"] or "") + f"\n\n**Preference — {field}:** {value}"
+                                    c.execute("UPDATE contexts SET profile_md=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                                              (new_md, row["id"]))
                             elif ut == "certification":
                                 # Append to profile as structured line
                                 new_md = (row["profile_md"] or "") + f"\n\n**Certifications:** {value}"
