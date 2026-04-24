@@ -462,8 +462,28 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     "Dashboard: beepbop.berlayar.ai")
             elif cmd == "/list":
                 from app.telegram_bot import _html_escape
-                opps = list_opportunities(limit=50)
-                opps = sorted(opps, key=lambda o: (o.get("match_score") or 0), reverse=True)
+                opps = list_opportunities(limit=200)
+                # Only show OPEN opps that have a real match score >= threshold.
+                # Unscored opps were polluting Top matches because (score or 0)
+                # sorted None as 0 — they tied with the genuinely-low scores.
+                MATCH_FLOOR = 0.3
+                scored = [o for o in opps
+                          if o.get("match_score") is not None
+                          and o.get("match_score") >= MATCH_FLOOR
+                          and (o.get("status") or "OPEN").upper() == "OPEN"]
+                scored.sort(key=lambda o: o["match_score"], reverse=True)
+                unscored_open = sum(
+                    1 for o in opps
+                    if o.get("match_score") is None
+                    and (o.get("status") or "OPEN").upper() == "OPEN"
+                )
+                low_score_open = sum(
+                    1 for o in opps
+                    if o.get("match_score") is not None
+                    and o.get("match_score") < MATCH_FLOOR
+                    and (o.get("status") or "OPEN").upper() == "OPEN"
+                )
+                opps = scored
 
                 def _sentence_case(t: str) -> str:
                     t = (t or "").strip()
@@ -504,20 +524,38 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     if score >= 0.4: return "🟡"
                     return "⚪"
 
-                lines = ["<b>Top matches</b> <i>against your creative-studio context</i>", ""]
-                for o in opps[:6]:
-                    s = o.get("match_score")
-                    score_str = f"{s:.2f}" if s is not None else "  —  "
-                    title = _html_escape(_sentence_case(o["title"])[:90])
-                    agency = _html_escape(_short_agency(o.get("agency", "")))
-                    closing = _html_escape(_closing_short(o.get("closing", "")))
-                    tier = _tier(s)
-                    lines.append(f"{tier} <b>{score_str}</b>  /opp_{o['id']}")
-                    lines.append(f"   {title}")
-                    lines.append(f"   <i>{agency}</i>  ·  closes {closing}")
-                    lines.append("")
-                lines.append("<i>Tap any /opp_&lt;id&gt; for pitch artifacts + compliance check.</i>")
-                send_text(chat_id, "\n".join(lines))
+                if not opps:
+                    msg = (
+                        "<b>No top matches yet.</b>\n\n"
+                        f"Open opps with match_score ≥ {MATCH_FLOOR}: 0.\n"
+                    )
+                    if unscored_open:
+                        msg += f"Unscored open opps: {unscored_open} — run <b>/score</b> to score them.\n"
+                    if low_score_open:
+                        msg += f"Low-score open opps (&lt; {MATCH_FLOOR}): {low_score_open}.\n"
+                    msg += "\nTry <b>/scrape</b> for fresh listings, or check <b>/context</b>."
+                    send_text(chat_id, msg)
+                else:
+                    lines = ["<b>Top matches</b> <i>against your creative-studio context</i>", ""]
+                    for o in opps[:6]:
+                        s = o["match_score"]
+                        title = _html_escape(_sentence_case(o["title"])[:90])
+                        agency = _html_escape(_short_agency(o.get("agency", "")))
+                        closing = _html_escape(_closing_short(o.get("closing", "")))
+                        tier = _tier(s)
+                        lines.append(f"{tier} <b>{s:.2f}</b>  /opp_{o['id']}")
+                        lines.append(f"   {title}")
+                        lines.append(f"   <i>{agency}</i>  ·  closes {closing}")
+                        lines.append("")
+                    footer_bits = []
+                    if unscored_open:
+                        footer_bits.append(f"{unscored_open} unscored")
+                    if low_score_open:
+                        footer_bits.append(f"{low_score_open} below floor")
+                    if footer_bits:
+                        lines.append(f"<i>{' · '.join(footer_bits)} — hidden from top matches.</i>")
+                    lines.append("<i>Tap any /opp_&lt;id&gt; for pitch artifacts + compliance check.</i>")
+                    send_text(chat_id, "\n".join(lines))
             elif cmd == "/opp" or cmd.startswith("/opp_"):
                 # accept /opp 9 or /opp_9
                 opp_id = None
