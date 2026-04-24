@@ -367,26 +367,74 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                 opps = list_opportunities(limit=50)
                 opps = sorted(opps, key=lambda o: (o.get("match_score") or 0), reverse=True)
 
-                def _short_title(t: str, max_chars: int = 48) -> str:
-                    t = (t or "").strip().title()
-                    if len(t) <= max_chars:
+                def _sentence_case(t: str) -> str:
+                    """Fix all-caps titles to readable form, preserving known acronyms."""
+                    t = (t or "").strip()
+                    if not t:
+                        return ""
+                    # If majority already mixed case, leave alone
+                    letters = [c for c in t if c.isalpha()]
+                    if letters and sum(1 for c in letters if c.isupper()) / len(letters) < 0.6:
                         return t
-                    cut = t[:max_chars].rsplit(" ", 1)[0]
-                    return cut + "…"
+                    # Sentence-case: lowercase everything, then fix acronyms + first letter
+                    t = t.lower().capitalize()
+                    ACRONYMS = {"moe", "ite", "nac", "nlb", "nhb", "ncss", "sgd", "itq", "rfq", "rfp",
+                                "wsq", "acta", "acra", "ura", "lta", "hdb", "ica", "ntu", "nus",
+                                "smu", "mps", "bmps", "tts", "cpr", "ttsh", "mnd", "mha", "mom",
+                                "mof", "mti", "mccy", "mse", "msf", "moh", "hpb"}
+                    words = t.split()
+                    out = []
+                    for w in words:
+                        pure = "".join(c for c in w if c.isalpha())
+                        if pure.lower() in ACRONYMS:
+                            out.append(w.upper())
+                        else:
+                            out.append(w)
+                    return " ".join(out)
 
                 def _short_agency(a: str) -> str:
                     a = (a or "").strip()
-                    # trim ministry prefix noise
-                    a = a.replace("Ministry of ", "").replace(" - Ministry Headquarter", "")
-                    return a[:40]
+                    # Common short forms
+                    mapping = {
+                        "Ministry of Education - Schools": "MOE Schools",
+                        "Ministry of Education": "MOE",
+                        "Ministry of Home Affairs": "MHA",
+                        "Ministry of Finance-Accountant-General's Department": "MOF / AGD",
+                        "Ministry of Social and Family Development - Ministry Headquarter": "MSF",
+                        "People's Association": "PA",
+                        "Land Transport Authority": "LTA",
+                        "Housing and Development Board": "HDB",
+                        "Urban Redevelopment Authority": "URA",
+                    }
+                    return mapping.get(a, a[:30])
 
-                lines = ["*Top matches*"]
+                def _closing_short(c: str) -> str:
+                    # "27 Apr 2026 01:00PM" → "27 Apr"
+                    parts = (c or "").split(" ")
+                    return " ".join(parts[:2]) if len(parts) >= 2 else (c or "")
+
+                def _tier(score):
+                    if score is None:
+                        return "⚪"
+                    if score >= 0.7:
+                        return "🟢"
+                    if score >= 0.4:
+                        return "🟡"
+                    return "⚪"
+
+                lines = ["*Top matches* _against your creative-studio context_", ""]
                 for o in opps[:6]:
-                    s = f"{o['match_score']:.2f}" if o.get("match_score") is not None else " ? "
-                    title = _short_title(o["title"])
+                    s = o.get("match_score")
+                    score_str = f"{s:.2f}" if s is not None else " —  "
+                    title = _sentence_case(o["title"])[:90]
                     agency = _short_agency(o.get("agency", ""))
-                    lines.append(f"\n`{s}`  /opp\\_{o['id']}\n_{title}_\n   · {agency}")
-                lines.append("\n\nTap any `/opp_<id>` for details.")
+                    closing = _closing_short(o.get("closing", ""))
+                    tier = _tier(s)
+                    lines.append(f"{tier} `{score_str}` /opp\\_{o['id']}")
+                    lines.append(f"   {title}")
+                    lines.append(f"   _{agency}_  ·  closes {closing}")
+                    lines.append("")
+                lines.append("Tap any `/opp_<id>` for pitch artifacts + compliance check.")
                 send_text(chat_id, "\n".join(lines))
             elif cmd == "/opp" or cmd.startswith("/opp_"):
                 # accept /opp 9 or /opp_9
