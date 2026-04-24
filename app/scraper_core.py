@@ -425,9 +425,22 @@ def extract_award_details(page) -> dict:
         return out
 
     lines = nonempty_lines(text)
-    out["awarded_supplier"] = extract_value_after(lines, "Awarded to") or extract_value_after(lines, "Awarded To")
-    out["awarded_amount_raw"] = extract_value_after(lines, "Total Awarded Value") or extract_value_after(lines, "Awarded Value")
-    out["awarded_at"] = extract_value_after(lines, "Awarded Date")
+
+    # extract_value_after slurps until a known STOP_TOKEN; the award panel's
+    # labels (Awarded to / Awarded Value / Awarded Items / Item No. 1 ...) are
+    # not in STOP_TOKENS, so it ingests the whole line-item dump after the
+    # supplier name. Award-panel fields are always single-line values, so
+    # take the first non-empty line after the label and stop.
+    def _first_line(label: str) -> str:
+        try:
+            i = lines.index(label)
+        except ValueError:
+            return ""
+        return lines[i + 1] if i + 1 < len(lines) else ""
+
+    out["awarded_supplier"] = _first_line("Awarded to") or _first_line("Awarded To")
+    out["awarded_amount_raw"] = _first_line("Total Awarded Value") or _first_line("Awarded Value")
+    out["awarded_at"] = _first_line("Awarded Date")
 
     raw = out["awarded_amount_raw"]
     if raw:
@@ -571,6 +584,28 @@ def download_documents_from_detail(page, destination: Path) -> list[str]:
     return downloaded
 
 
+_TAB_COUNT_RE = re.compile(r'(Open|Closed|All)\s*\(\s*(\d+)\s*\)', re.I)
+
+
+def _read_tab_counts(page) -> dict[str, int]:
+    """Read 'Open (N)' / 'Closed (M)' counts from the BOListing tab bar.
+
+    Lets the caller distinguish 'no matching tenders at all' from 'no OPEN
+    matches but plenty of awarded/closed ones' so we can tell the user to
+    use /scrape_awarded instead.
+    """
+    out = {"open": 0, "closed": 0, "all": 0}
+    try:
+        text = page.locator("body").inner_text(timeout=2000)
+    except (PlaywrightTimeoutError, PlaywrightError):
+        return out
+    except Exception:  # noqa: BLE001
+        return out
+    for m in _TAB_COUNT_RE.finditer(text):
+        out[m.group(1).lower()] = int(m.group(2))
+    return out
+
+
 def search_keyword(
     page,
     keyword: str,
@@ -578,6 +613,7 @@ def search_keyword(
     days_filter: str,
     *,
     awarded_only: bool = False,
+    out_tab_counts: dict | None = None,
 ) -> list[dict[str, str]]:
     ensure_search_page(page)
     resolve_multiple_windows(page)
@@ -613,6 +649,10 @@ def search_keyword(
     search_input.fill(keyword)
     go_button.click()
     page.wait_for_timeout(2500)
+    # Capture tab counts immediately after search so we know whether 0 results
+    # means "nothing matched" or "matched but all closed/awarded".
+    if out_tab_counts is not None:
+        out_tab_counts.update(_read_tab_counts(page))
     results: list[dict[str, str]] = []
     seen_urls: set[str] = set()
     previous_first_title = ""
@@ -798,11 +838,14 @@ def run_search(
 
         matches: list[dict[str, str]] = []
         seen_urls: set[str] = set()
+        tab_counts_per_keyword: dict[str, dict[str, int]] = {}
         for keyword in keywords:
+            tc: dict[str, int] = {}
             keyword_matches = search_keyword(
                 page, keyword, limit_per_keyword, days_filter,
-                awarded_only=awarded_only,
+                awarded_only=awarded_only, out_tab_counts=tc,
             )
+            tab_counts_per_keyword[keyword] = tc
             for match in keyword_matches:
                 if match["url"] in seen_urls:
                     continue
@@ -883,7 +926,12 @@ def run_search(
 
         json_path, csv_path = write_outputs(records, output_dir)
         context.close()
-    return {"records": records, "json_path": str(json_path), "csv_path": str(csv_path)}
+    return {
+        "records": records,
+        "json_path": str(json_path),
+        "csv_path": str(csv_path),
+        "tab_counts_per_keyword": tab_counts_per_keyword,
+    }
 
 
 def parse_args() -> argparse.Namespace:

@@ -167,10 +167,28 @@ async def run_scrape_job(
                 "UPDATE scrape_jobs SET status='done', rows_ingested=?, finished_at=? WHERE id=?",
                 (rows, datetime.utcnow().isoformat(), job_id),
             )
+        # Smart hint when 0 rows landed but the search page reported closed
+        # matches exist — tells the user to try /scrape_awarded for those terms
+        # instead of silently shrugging "0 rows".
+        hint = ""
+        tab_counts = result.get("tab_counts_per_keyword") or {}
+        if rows == 0 and not awarded_only:
+            kws_with_closed = [
+                kw for kw, tc in tab_counts.items()
+                if tc.get("closed", 0) > 0 and tc.get("open", 0) == 0
+            ]
+            if kws_with_closed:
+                kw_list = " ".join(kws_with_closed[:3])
+                total_closed = sum(tab_counts[kw].get("closed", 0) for kw in kws_with_closed)
+                hint = (
+                    f"\n💡 <b>{total_closed} closed/awarded match(es)</b> for "
+                    f"<code>{kw_list}</code> — none currently open. "
+                    f"Try <b>/scrape_awarded {kw_list}</b> for past prices."
+                )
         _notify(
             f"✅ <b>Scrape #{job_id} done</b>\n"
             f"Keywords: <code>{' '.join(keywords)[:120]}</code>\n"
-            f"Ingested: {rows} new/updated rows — use <b>/list</b>."
+            f"Ingested: {rows} new/updated rows — use <b>/list</b>.{hint}"
         )
         return {"job_id": job_id, "rows_ingested": rows, "status": "done"}
 
