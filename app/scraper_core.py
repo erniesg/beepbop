@@ -393,6 +393,54 @@ def extract_document_info(page) -> list[dict[str, str]]:
     return filtered
 
 
+def extract_award_details(page) -> dict:
+    """Click the 'Award' tab on a tender detail page and parse the awarded $ + supplier.
+
+    Empirical labels (probed against MOESCHETQ25006155 in a live Singpass session):
+      'Total Awarded Value' → '13,140.00 (SGD)'
+      'Awarded to' → supplier company name (lowercase 'to' — not 'To')
+      'Awarded Date' → 'DD MMM YYYY' format
+    The Award tab is a JSF submit button with value starting "Award" — when
+    no awards exist (open tenders) the tab simply isn't present, so we no-op.
+    Stays in the SAME browser context as the surrounding scrape — Singpass
+    session cookies live in memory only and don't survive across Playwright
+    process boundaries.
+    """
+    out = {"awarded_supplier": "", "awarded_amount_raw": "",
+           "awarded_amount": None, "awarded_at": "", "award_currency": ""}
+    try:
+        tab = page.locator('input[value^="Award"]').first
+        if tab.count() == 0:
+            return out
+        tab.click(timeout=4000)
+        page.wait_for_timeout(1500)
+        try:
+            page.wait_for_load_state("networkidle", timeout=4000)
+        except (PlaywrightTimeoutError, PlaywrightError):
+            pass
+        text = page.locator("body").inner_text(timeout=5000)
+    except (PlaywrightTimeoutError, PlaywrightError):
+        return out
+    except Exception:  # noqa: BLE001
+        return out
+
+    lines = nonempty_lines(text)
+    out["awarded_supplier"] = extract_value_after(lines, "Awarded to") or extract_value_after(lines, "Awarded To")
+    out["awarded_amount_raw"] = extract_value_after(lines, "Total Awarded Value") or extract_value_after(lines, "Awarded Value")
+    out["awarded_at"] = extract_value_after(lines, "Awarded Date")
+
+    raw = out["awarded_amount_raw"]
+    if raw:
+        m = _PRICE_RE.search(raw)
+        if m:
+            try:
+                out["awarded_amount"] = float(m.group(1).replace(",", ""))
+            except ValueError:
+                pass
+        out["award_currency"] = "SGD" if "(SGD)" in raw or "SGD" in raw.upper() else ""
+    return out
+
+
 def documents_are_downloadable(page) -> bool:
     docs = extract_document_info(page)
     return any(item.get("downloadable") == "true" for item in docs)
@@ -787,6 +835,13 @@ def run_search(
                     parsed["title"] = match["title"]
                 if not documents and parsed.get("document_names"):
                     documents = [{"text": name, "href": ""} for name in parsed["document_names"]]
+                # Award details live on a separate JSF tab on the SAME page — must
+                # be clicked in this live session before navigating away. Only
+                # bother when the listing flagged this tender as awarded OR we're
+                # explicitly in awarded-only mode.
+                if (parsed.get("status") in ("AWARDED", "PENDING AWARD")) or awarded_only:
+                    award_info = extract_award_details(page)
+                    parsed.update({k: v for k, v in award_info.items() if v not in (None, "")})
                 downloaded_files: list[str] = []
                 if documents and not skip_downloads:
                     doc_dir = downloads_root / f"{index:03d}-{slugify(parsed.get('opportunity_no') or parsed.get('title') or 'documents')}"
