@@ -358,11 +358,17 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                 send_text(chat_id,
                     "*beepbop* — GeBIZ scout for creative SMEs\n\n"
                     "*Commands*\n"
-                    "/list — top opportunities\n"
+                    "/list — top opportunities by match score\n"
                     "/opp <id> — opportunity detail + actions\n"
+                    "/context — see your org profile + rates\n"
+                    "/remember <fact> — add a fact (e.g. rates)\n"
                     "/scrape — rescan GeBIZ (slow)\n"
-                    "/remember <fact> — add to context\n"
-                    "/help — this message")
+                    "/help — this message\n\n"
+                    "*How it works*\n"
+                    "1. /list shows opportunities scored against your context\n"
+                    "2. /opp <id> → tap Generate deck / quote / send proposal\n"
+                    "3. Every external action (email send, call, calendar book) waits for your tap approval here\n\n"
+                    "Live dashboard: beepbop.berlayar.ai")
             elif cmd == "/list":
                 opps = list_opportunities(limit=50)
                 opps = sorted(opps, key=lambda o: (o.get("match_score") or 0), reverse=True)
@@ -468,6 +474,28 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                             c.execute("UPDATE contexts SET profile_md = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
                                       (new_md, row["id"]))
                     send_text(chat_id, f"✓ remembered: _{args}_")
+            elif cmd == "/context" or cmd == "/profile":
+                from app.db import conn as _conn
+                import json as _j
+                with _conn() as c:
+                    row = c.execute("SELECT * FROM contexts ORDER BY id ASC LIMIT 1").fetchone()
+                if not row:
+                    send_text(chat_id, "No context yet. Use /remember to add facts.")
+                else:
+                    services = row["services"]
+                    try: services = _j.loads(services) if services else []
+                    except: services = []
+                    rates = row["rates"]
+                    try: rates = _j.loads(rates) if rates else {}
+                    except: rates = {}
+                    profile = (row["profile_md"] or "")[:800]
+                    rate_lines = "\n".join(f"  • {k}: SGD {v}" for k, v in list(rates.items())[:8]) or "  (none)"
+                    text = (f"*Your context*: _{row['name']}_\n\n"
+                            f"*Services*: {', '.join(services) if services else '(none)'}\n\n"
+                            f"*Rates*:\n{rate_lines}\n\n"
+                            f"*Profile*\n{profile}\n\n"
+                            f"Edit via /remember <fact> or at beepbop.berlayar.ai/contexts/mine")
+                    send_text(chat_id, text[:3900])  # Telegram msg limit 4096
             else:
                 send_text(chat_id, f"Unknown command: {cmd}\nTry /help")
         except Exception as e:
@@ -483,18 +511,54 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
     chat_id = parsed["chat_id"]
     callback_id = parsed["callback_id"]
 
-    # Artifact actions (deck/quote): arg is opportunity_id not outreach_id
+    # Artifact actions (deck/quote/quote_confirm): arg is opportunity_id
     if action in ("deck", "quote"):
-        opp_id = parsed["outreach_id"]  # reused int field
-        answer_callback(callback_id, f"Generating {action}…")
+        opp_id = parsed["outreach_id"]
+        opp = get_opportunity(opp_id)
+        answer_callback(callback_id, "ok")
+        # Show what will be generated + ask for confirmation
+        ctx = _load_default_context()
+        import json as _j
+        rates = ctx.get("rates") or "{}"
+        try: rates = _j.loads(rates) if isinstance(rates, str) else rates
+        except: rates = {}
+        rate_lines = "\n".join(f"  • {k}: SGD {v}" for k, v in list(rates.items())[:5]) or "  (no rates on file)"
+        if action == "deck":
+            preview = (f"*Confirm deck generation for:*\n_{opp['title'][:80]}_\n\n"
+                       f"Will include: about us, understanding of opp, approach, team, timeline, pricing headline, next steps.\n\n"
+                       f"ETA: ~60-120s")
+        else:
+            preview = (f"*Confirm quote generation for:*\n_{opp['title'][:80]}_\n\n"
+                       f"Will use your rates:\n{rate_lines}\n\n"
+                       f"ETA: ~60-120s")
+        kb = [[{"text": "✓ Generate", "callback_data": f"{action}_go:{opp_id}"},
+               {"text": "✕ Cancel", "callback_data": f"cancel:{opp_id}"}]]
+        import httpx as _httpx
+        _httpx.post(
+            f"https://api.telegram.org/bot{_as.telegram_bot_token()}/sendMessage",
+            json={"chat_id": chat_id, "text": preview, "parse_mode": "Markdown",
+                  "reply_markup": {"inline_keyboard": kb}}, timeout=15)
+        return {"ok": True, "action": action, "stage": "confirm"}
+
+    if action in ("deck_go", "quote_go"):
+        opp_id = parsed["outreach_id"]
+        kind = action.replace("_go", "")
+        answer_callback(callback_id, f"Starting {kind} generation — please wait")
+        send_text(chat_id, f"⏳ *{kind.capitalize()}* generation started for opp #{opp_id}. Genspark spins up a Claw VM, generates content, returns a share URL. ETA ~60-120s.")
         def _gen():
             from app.outreach import generate_deck, generate_quote
             try:
-                art = (generate_deck if action == "deck" else generate_quote)(opp_id, _load_default_context())
-                send_text(chat_id, f"✓ {action} ready: {art.get('share_url','(no url)')}")
+                art = (generate_deck if kind == "deck" else generate_quote)(opp_id, _load_default_context())
+                url = art.get("share_url") or "(generated, no URL returned)"
+                send_text(chat_id, f"✅ *{kind.capitalize()} ready*\n{url}")
             except Exception as e:
-                send_text(chat_id, f"✗ {action} failed: {str(e)[:200]}")
+                send_text(chat_id, f"❌ *{kind} failed*\n`{str(e)[:300]}`\n\nRetry with the same button.")
         background_tasks.add_task(_gen)
+        return {"ok": True, "action": action}
+
+    if action == "cancel":
+        answer_callback(callback_id, "Cancelled")
+        send_text(chat_id, "✕ Cancelled.")
         return {"ok": True, "action": action}
 
     # Propose flow: request approval + mock reply + meeting
