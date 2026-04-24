@@ -28,7 +28,7 @@ class Settings(BaseSettings):
 
     demo_mode: bool = True
     mock_reply_seconds: int = 10
-    scrape_timeout_seconds: int = 180
+    scrape_timeout_seconds: int = 420
 
     @property
     def sqlite_path(self) -> Path:

@@ -6,13 +6,29 @@
     <h1 class="text-2xl font-semibold tracking-tight">Opportunities</h1>
     <p class="text-sm text-slate-500 mt-0.5">Scored against your creative-studio context · click any row for pitch artifacts + compliance check</p>
   </div>
-  <div class="flex gap-2">
+  <div class="flex gap-2 items-center">
+    <span id="scrape-status" class="text-xs text-slate-500 min-h-[1.5rem]"></span>
     <button hx-post="/api/score-all" hx-swap="none"
             hx-on::after-request="setTimeout(()=>location.reload(), 2000)"
             class="px-3 py-1.5 bg-slate-900 text-white rounded text-sm hover:bg-slate-800 transition">
       Score all
     </button>
-    <button hx-post="/api/scrapes" hx-swap="none"
+    <button id="scrape-btn"
+            hx-post="/api/scrapes" hx-swap="none"
+            hx-disabled-elt="this"
+            hx-on::before-request="document.getElementById('scrape-status').innerText = '⏳ Kicking scrape…'; this.classList.add('opacity-50')"
+            hx-on::after-request="
+              const s = document.getElementById('scrape-status');
+              this.classList.remove('opacity-50');
+              if (event.detail.successful) {
+                const r = JSON.parse(event.detail.xhr.responseText);
+                s.innerHTML = '🔍 Scrape #' + r.job_id + ' running — check <a href=\'/api/scrape-status\' class=\'underline\'>/api/scrape-status</a> or Telegram /jobs';
+              } else {
+                const code = event.detail.xhr.status;
+                if (code === 409) { s.innerText = '⏳ Already scraping — wait for current job'; }
+                else if (code === 401) { s.innerText = '🔒 Not signed in — refresh page'; }
+                else { s.innerText = '✗ Failed (HTTP ' + code + ')'; }
+              }"
             class="px-3 py-1.5 border border-slate-300 rounded text-sm hover:bg-slate-50 transition">
       Scrape GeBIZ
     </button>

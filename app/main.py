@@ -368,7 +368,8 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     "/context — see your org profile + rates\n"
                     "/remember &lt;fact&gt; — add a fact (rates, certs, preferences)\n"
                     "/forget &lt;target&gt; — clear (all, preferences, rates, or a key)\n"
-                    "/scrape — rescan GeBIZ\n"
+                    "/scrape [keywords] — rescan GeBIZ (e.g. <code>/scrape photography workshop</code>)\n"
+                    "/jobs — recent scrape jobs + status\n"
                     "/help — this message\n\n"
                     "<b>Flow</b>\n"
                     "1. /list → opportunities scored against your context\n"
@@ -451,7 +452,65 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     else:
                         send_opportunity_card(chat_id, opp)
             elif cmd == "/scrape":
-                send_text(chat_id, "Kicking scrape (using seed data for demo speed)… ✓ 0 new, 42 known.")
+                from app.scraper import ScrapeAlreadyRunning, create_scrape_job, run_scrape_job
+                from app.telegram_bot import _html_escape
+                kws = [w.strip() for w in (args or "").replace(",", " ").split() if w.strip()]
+                if not kws:
+                    kws = ["artist", "photography", "videography", "design", "workshop", "programme", "video", "media"]
+                try:
+                    job_id = create_scrape_job(kws, owner_id=None)
+                except ScrapeAlreadyRunning as e:
+                    send_text(chat_id, f"⏳ Already scraping: <code>{_html_escape(str(e))}</code>\nUse <b>/jobs</b> to check progress.")
+                    return {"ok": True, "command": cmd, "stage": "already_running"}
+
+                async def _run_and_notify(jid: int, words: list[str]):
+                    try:
+                        result = await run_scrape_job(jid, words)
+                        send_text(
+                            chat_id,
+                            f"✅ <b>Scrape #{jid} done</b>\n"
+                            f"Keywords: <code>{_html_escape(' '.join(words))}</code>\n"
+                            f"Ingested: {result.get('rows_ingested',0)} new/updated rows\n"
+                            f"→ Use <b>/list</b> to see top matches."
+                        )
+                    except Exception as exc:
+                        send_text(
+                            chat_id,
+                            f"❌ <b>Scrape #{jid} failed</b>\n<code>{_html_escape(str(exc)[:300])}</code>"
+                        )
+
+                background_tasks.add_task(_run_and_notify, job_id, kws)
+                send_text(
+                    chat_id,
+                    f"🔍 <b>Scrape #{job_id} started</b>\n"
+                    f"Keywords: <code>{_html_escape(' '.join(kws))}</code>\n"
+                    f"Playwright runs public-listing mode (no Singpass needed). ETA: 1-5 min depending on GeBIZ response.\n"
+                    f"I'll DM when done, or <b>/jobs</b> to poll."
+                )
+            elif cmd == "/jobs":
+                from app.telegram_bot import _html_escape
+                from app.db import conn as _conn
+                with _conn() as c:
+                    jobs = c.execute(
+                        "SELECT id, status, keywords, started_at, finished_at, rows_ingested, error "
+                        "FROM scrape_jobs ORDER BY id DESC LIMIT 5"
+                    ).fetchall()
+                if not jobs:
+                    send_text(chat_id, "No scrape jobs yet. Try <b>/scrape</b>.")
+                else:
+                    import json as _j
+                    lines = ["<b>Recent scrape jobs</b>"]
+                    for j in jobs:
+                        emoji = {"running": "⏳", "done": "✅", "failed": "❌", "queued": "📋"}.get(j["status"], "·")
+                        kws = _j.loads(j["keywords"] or "[]")
+                        kws_short = ", ".join(kws[:3]) + (f" +{len(kws)-3}" if len(kws) > 3 else "")
+                        line = f"{emoji} <b>#{j['id']}</b> {j['status']} · <code>{_html_escape(kws_short)}</code>"
+                        if j["status"] == "done":
+                            line += f" → {j['rows_ingested']} rows"
+                        elif j["status"] == "failed":
+                            line += f"\n  <i>{_html_escape((j['error'] or '')[:120])}</i>"
+                        lines.append(line)
+                    send_text(chat_id, "\n".join(lines))
             elif cmd == "/remember":
                 if not args:
                     send_text(chat_id, "Usage: <code>/remember I charge 1800 for full-day video</code>")
@@ -781,9 +840,41 @@ async def api_scrape(request: Request, background_tasks: BackgroundTasks):
     keywords = body.get("keywords") or [
         "artist", "photography", "videography", "design", "workshop", "programme", "video", "media"
     ]
-    from app.scraper import run_scrape
-    background_tasks.add_task(run_scrape, keywords, user["id"])
-    return {"job_id": "pending", "keywords": keywords}
+    from app.scraper import ScrapeAlreadyRunning, create_scrape_job, run_scrape_job
+    try:
+        job_id = create_scrape_job(keywords, user["id"])
+    except ScrapeAlreadyRunning as e:
+        raise HTTPException(409, str(e))
+    background_tasks.add_task(run_scrape_job, job_id, keywords)
+    return {"job_id": job_id, "keywords": keywords, "status": "running"}
+
+
+@app.get("/api/scrape-status")
+async def api_scrape_status(request: Request):
+    user = current_user(request)
+    if not user:
+        raise HTTPException(401, "not authenticated")
+    from app.db import conn as _conn
+    with _conn() as c:
+        rows = c.execute(
+            "SELECT id, status, keywords, started_at, finished_at, rows_ingested, error "
+            "FROM scrape_jobs ORDER BY id DESC LIMIT 10"
+        ).fetchall()
+    import json as _j
+    return {
+        "jobs": [
+            {
+                "id": r["id"],
+                "status": r["status"],
+                "keywords": _j.loads(r["keywords"] or "[]"),
+                "started_at": r["started_at"],
+                "finished_at": r["finished_at"],
+                "rows_ingested": r["rows_ingested"] or 0,
+                "error": r["error"] or "",
+            }
+            for r in rows
+        ]
+    }
 
 
 @app.post("/api/score-all", status_code=202)
