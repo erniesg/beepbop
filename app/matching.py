@@ -284,7 +284,7 @@ def parse_remember_fact(text: str, extra_hint: str | None = None) -> dict:
         raw = re.sub(r"^```(?:json)?|```$", "", raw, flags=re.MULTILINE).strip()
         data = json.loads(raw)
         ut = data.get("update_type")
-        if ut in {"rate", "service", "certification", "profile", "needs_clarification"}:
+        if ut in {"rate", "service", "certification", "preference", "profile", "needs_clarification"}:
             return data
     except Exception:
         pass
