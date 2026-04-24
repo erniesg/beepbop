@@ -27,7 +27,9 @@ def _api_url(path: str) -> str:
     return f"{TG_API}/bot{token}/{path}"
 
 
-def send_text(chat_id: str | None, text: str, parse_mode: str | None = "Markdown") -> dict:
+def send_text(chat_id: str | None, text: str, parse_mode: str | None = "HTML") -> dict:
+    """Send text to a chat. Default parse_mode=HTML (more forgiving than Markdown).
+    Falls back to plain text if parsing fails."""
     from app.app_settings import telegram_chat_id as _tg_chat
     chat_id = chat_id or _tg_chat()
     if not chat_id:
@@ -37,7 +39,7 @@ def send_text(chat_id: str | None, text: str, parse_mode: str | None = "Markdown
         payload["parse_mode"] = parse_mode
     r = httpx.post(_api_url("sendMessage"), json=payload, timeout=15)
     if r.status_code == 400 and parse_mode:
-        # Markdown parse error — retry as plain text
+        # Parse error — retry as plain text
         payload.pop("parse_mode", None)
         r = httpx.post(_api_url("sendMessage"), json=payload, timeout=15)
     r.raise_for_status()
@@ -136,17 +138,24 @@ def parse_message(payload: dict) -> dict | None:
     }
 
 
+def _html_escape(s: str) -> str:
+    return (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
 def send_opportunity_card(chat_id: str | int, opp: dict) -> dict:
     """Send an opportunity summary with inline action buttons."""
-    score_badge = f"*{opp['match_score']:.2f}*" if opp.get("match_score") is not None else "?"
+    title = _html_escape(opp.get("title", ""))
+    agency = _html_escape(opp.get("agency", ""))
+    closing = _html_escape(opp.get("closing", ""))
+    score_badge = f"<b>{opp['match_score']:.2f}</b>" if opp.get("match_score") is not None else "?"
     text = (
-        f"*{opp['title']}*\n"
-        f"_{opp.get('agency','')}_\n"
-        f"closing {opp.get('closing','')}\n"
+        f"<b>{title}</b>\n"
+        f"<i>{agency}</i>\n"
+        f"closing {closing}\n"
         f"match: {score_badge}"
     )
     if opp.get("match_rationale"):
-        text += f"\n\n_{opp['match_rationale'][:200]}_"
+        text += f"\n\n<i>{_html_escape(opp['match_rationale'][:300])}</i>"
 
     keyboard = [
         [
@@ -157,7 +166,7 @@ def send_opportunity_card(chat_id: str | int, opp: dict) -> dict:
     ]
     r = httpx.post(
         _api_url("sendMessage"),
-        json={"chat_id": chat_id, "text": text, "parse_mode": "Markdown",
+        json={"chat_id": chat_id, "text": text, "parse_mode": "HTML",
               "reply_markup": {"inline_keyboard": keyboard}},
         timeout=15,
     )

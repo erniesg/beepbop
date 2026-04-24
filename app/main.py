@@ -497,7 +497,9 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     send_text(chat_id, f"✓ {parsed.get('summary','saved')}")
             elif cmd == "/context" or cmd == "/profile":
                 from app.db import conn as _conn
+                from app.telegram_bot import _html_escape
                 import json as _j
+                import re as _re
                 with _conn() as c:
                     row = c.execute("SELECT * FROM contexts ORDER BY id ASC LIMIT 1").fetchone()
                 if not row:
@@ -509,14 +511,24 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     rates = row["rates"]
                     try: rates = _j.loads(rates) if rates else {}
                     except: rates = {}
-                    profile = (row["profile_md"] or "")[:800]
-                    rate_lines = "\n".join(f"  • {k}: SGD {v}" for k, v in list(rates.items())[:8]) or "  (none)"
-                    text = (f"*Your context*: _{row['name']}_\n\n"
-                            f"*Services*: {', '.join(services) if services else '(none)'}\n\n"
-                            f"*Rates*:\n{rate_lines}\n\n"
-                            f"*Profile*\n{profile}\n\n"
-                            f"Edit via /remember <fact> or at beepbop.berlayar.ai/contexts/mine")
-                    send_text(chat_id, text[:3900])  # Telegram msg limit 4096
+                    profile_raw = (row["profile_md"] or "")
+                    # Extract just the "What we do" paragraph, skip headings/tables
+                    what_match = _re.search(r"## What we do\s*(.+?)(?=##|$)", profile_raw, _re.S)
+                    tagline = what_match.group(1).strip() if what_match else profile_raw.split("\n\n")[0][:300]
+                    tagline = _re.sub(r"\s+", " ", tagline)[:350]
+
+                    rate_lines = "\n".join(f"  • <code>{_html_escape(k)}</code>: SGD {v}" for k, v in list(rates.items())[:8]) or "  <i>(none yet — use /remember)</i>"
+                    services_str = ", ".join(_html_escape(s) for s in services) if services else "<i>(none)</i>"
+
+                    text = (
+                        f"<b>Your context</b>\n"
+                        f"<i>{_html_escape(row['name'])}</i>\n\n"
+                        f"<b>Tagline</b>\n{_html_escape(tagline)}\n\n"
+                        f"<b>Services</b>\n{services_str}\n\n"
+                        f"<b>Rates</b>\n{rate_lines}\n\n"
+                        f"<i>Edit: /remember &lt;fact&gt; · or beepbop.berlayar.ai/settings</i>"
+                    )
+                    send_text(chat_id, text, parse_mode="HTML")
             else:
                 send_text(chat_id, f"Unknown command: {cmd}\nTry /help")
         except Exception as e:
