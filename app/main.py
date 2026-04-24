@@ -361,19 +361,20 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
         try:
             if cmd in ("/start", "/help"):
                 send_text(chat_id,
-                    "*beepbop* — GeBIZ scout for creative SMEs\n\n"
-                    "*Commands*\n"
+                    "<b>beepbop</b> — GeBIZ scout for creative SMEs\n\n"
+                    "<b>Commands</b>\n"
                     "/list — top opportunities by match score\n"
-                    "/opp <id> — opportunity detail + actions\n"
+                    "/opp &lt;id&gt; — opportunity detail + actions\n"
                     "/context — see your org profile + rates\n"
-                    "/remember <fact> — add a fact (e.g. rates)\n"
-                    "/scrape — rescan GeBIZ (slow)\n"
+                    "/remember &lt;fact&gt; — add a fact (rates, certs, preferences)\n"
+                    "/forget &lt;target&gt; — clear (all, preferences, rates, or a key)\n"
+                    "/scrape — rescan GeBIZ\n"
                     "/help — this message\n\n"
-                    "*How it works*\n"
-                    "1. /list shows opportunities scored against your context\n"
-                    "2. /opp <id> → tap Generate deck / quote / send proposal\n"
-                    "3. Every external action (email send, call, calendar book) waits for your tap approval here\n\n"
-                    "Live dashboard: beepbop.berlayar.ai")
+                    "<b>Flow</b>\n"
+                    "1. /list → opportunities scored against your context\n"
+                    "2. /opp &lt;id&gt; → tap Generate deck / quote / send proposal\n"
+                    "3. Every external action waits for your tap approval\n\n"
+                    "Dashboard: beepbop.berlayar.ai")
             elif cmd == "/list":
                 opps = list_opportunities(limit=50)
                 opps = sorted(opps, key=lambda o: (o.get("match_score") or 0), reverse=True)
@@ -531,6 +532,36 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                                 c.execute("UPDATE contexts SET profile_md=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
                                           (new_md, row["id"]))
                     send_text(chat_id, f"✓ {parsed.get('summary','saved')}")
+            elif cmd == "/forget":
+                from app.db import conn as _conn
+                import json as _j
+                target = args.strip().lower() if args else ""
+                with _conn() as c:
+                    row = c.execute("SELECT * FROM contexts ORDER BY id ASC LIMIT 1").fetchone()
+                    if not row:
+                        send_text(chat_id, "No context to forget.")
+                    elif not target or target in ("all", "everything"):
+                        c.execute("UPDATE contexts SET preferences=NULL, rates='{}', updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                                  (row["id"],))
+                        send_text(chat_id, "✓ Cleared all preferences and rates. /context to confirm.")
+                    elif target in ("preferences", "prefs", "pronouns", "name"):
+                        c.execute("UPDATE contexts SET preferences=NULL, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                                  (row["id"],))
+                        send_text(chat_id, "✓ Cleared preferences (name, pronouns, tone).")
+                    elif target in ("rates", "rate"):
+                        c.execute("UPDATE contexts SET rates='{}', updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                                  (row["id"],))
+                        send_text(chat_id, "✓ Cleared rates card.")
+                    else:
+                        # Try to remove a specific rate key
+                        rates = _j.loads(row["rates"] or "{}")
+                        if target in rates:
+                            del rates[target]
+                            c.execute("UPDATE contexts SET rates=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                                      (_j.dumps(rates), row["id"]))
+                            send_text(chat_id, f"✓ Removed rate: {target}")
+                        else:
+                            send_text(chat_id, f"Nothing to forget for: <code>{target}</code>\n\nUsage:\n<code>/forget all</code>\n<code>/forget preferences</code>\n<code>/forget rates</code>\n<code>/forget photography_halfday</code>")
             elif cmd == "/context" or cmd == "/profile":
                 from app.db import conn as _conn
                 from app.telegram_bot import _html_escape
