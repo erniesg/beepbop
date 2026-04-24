@@ -585,16 +585,21 @@ def download_documents_from_detail(page, destination: Path) -> list[str]:
 
 
 _TAB_COUNT_RE = re.compile(r'(Open|Closed|All)\s*\(\s*(\d+)\s*\)', re.I)
+_MASTER_COUNT_RE = re.compile(r'(\d+)\s+opportunit(?:y|ies)\s+found', re.I)
 
 
 def _read_tab_counts(page) -> dict[str, int]:
-    """Read 'Open (N)' / 'Closed (M)' counts from the BOListing tab bar.
+    """Capture result counts from the BOListing search-results header.
 
-    Lets the caller distinguish 'no matching tenders at all' from 'no OPEN
-    matches but plenty of awarded/closed ones' so we can tell the user to
-    use /scrape_awarded instead.
+    Two signals on the page, only one always present:
+      - "Open (N) / Closed (M) / All (X)" tab labels — appear ONLY when the
+        OPEN tab has matches (otherwise GeBIZ hides the tab bar entirely).
+      - "X opportunities found for your search '...'" — always present, the
+        master result count across both tabs.
+    We capture both so the caller can tell "0 anywhere" from "0 open + N
+    closed" — the latter triggers a /scrape_awarded suggestion.
     """
-    out = {"open": 0, "closed": 0, "all": 0}
+    out = {"open": 0, "closed": 0, "all": 0, "master": 0}
     try:
         text = page.locator("body").inner_text(timeout=2000)
     except (PlaywrightTimeoutError, PlaywrightError):
@@ -603,6 +608,9 @@ def _read_tab_counts(page) -> dict[str, int]:
         return out
     for m in _TAB_COUNT_RE.finditer(text):
         out[m.group(1).lower()] = int(m.group(2))
+    m = _MASTER_COUNT_RE.search(text)
+    if m:
+        out["master"] = int(m.group(1))
     return out
 
 

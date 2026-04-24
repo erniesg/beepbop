@@ -167,23 +167,25 @@ async def run_scrape_job(
                 "UPDATE scrape_jobs SET status='done', rows_ingested=?, finished_at=? WHERE id=?",
                 (rows, datetime.utcnow().isoformat(), job_id),
             )
-        # Smart hint when 0 rows landed but the search page reported closed
-        # matches exist — tells the user to try /scrape_awarded for those terms
-        # instead of silently shrugging "0 rows".
+        # Smart hint when 0 rows landed but the search page DID find matches
+        # (just none in the OPEN tab). GeBIZ hides the Open/Closed tab bar
+        # when the open tab is empty, so we rely on the master count
+        # ("N opportunities found") rather than tab_counts.closed.
         hint = ""
         tab_counts = result.get("tab_counts_per_keyword") or {}
         if rows == 0 and not awarded_only:
-            kws_with_closed = [
+            kws_with_hits = [
                 kw for kw, tc in tab_counts.items()
-                if tc.get("closed", 0) > 0 and tc.get("open", 0) == 0
+                if tc.get("master", 0) > 0
             ]
-            if kws_with_closed:
-                kw_list = " ".join(kws_with_closed[:3])
-                total_closed = sum(tab_counts[kw].get("closed", 0) for kw in kws_with_closed)
+            if kws_with_hits:
+                kw_list = " ".join(kws_with_hits[:3])
+                total = sum(tab_counts[kw].get("master", 0) for kw in kws_with_hits)
                 hint = (
-                    f"\n💡 <b>{total_closed} closed/awarded match(es)</b> for "
+                    f"\n💡 <b>{total} closed/awarded match(es)</b> for "
                     f"<code>{kw_list}</code> — none currently open. "
-                    f"Try <b>/scrape_awarded {kw_list}</b> for past prices."
+                    f"Try <b>/scrape_awarded {kw_list}</b> for past prices, "
+                    f"or <b>/scrape_docs_awarded {kw_list}</b> for prices + tender PDFs."
                 )
         _notify(
             f"✅ <b>Scrape #{job_id} done</b>\n"
