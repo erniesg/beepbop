@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urljoin
 
+from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import sync_playwright
 
@@ -330,9 +331,14 @@ def extract_document_info(page) -> list[dict[str, str]]:
       return dedup;
     }
     """
+    # GeBIZ frequently triggers post-load JS navigations that destroy the JS
+    # execution context mid-evaluate. We swallow ALL Playwright errors here
+    # (not just timeouts) so a single bad page doesn't crash the entire scrape.
     try:
         documents = page.evaluate(script)
-    except PlaywrightTimeoutError:
+    except (PlaywrightTimeoutError, PlaywrightError):
+        return []
+    except Exception:  # noqa: BLE001
         return []
     if not isinstance(documents, list):
         return []
@@ -689,38 +695,61 @@ def run_search(
         snapshots_root = Path.home() / ".beepbop" / "snapshots"
         snapshots_root.mkdir(parents=True, exist_ok=True)
         for index, match in enumerate(matches, start=1):
-            page.goto(match["url"], wait_until="domcontentloaded")
-            page.wait_for_timeout(1500)
-            resolve_multiple_windows(page)
-            parsed = parse_detail_text(page.locator("body").inner_text())
-            documents = extract_document_info(page)
-            if not parsed.get("title"):
-                parsed["title"] = match["title"]
-            if not documents and parsed.get("document_names"):
-                documents = [{"text": name, "href": ""} for name in parsed["document_names"]]
-            downloaded_files: list[str] = []
-            if documents and not skip_downloads:
-                doc_dir = downloads_root / f"{index:03d}-{slugify(parsed.get('opportunity_no') or parsed.get('title') or 'documents')}"
-                downloaded_files = download_documents_from_detail(page, doc_dir)
-            # Snapshot the detail page — persistent across scrape runs, per-opp
-            snapshot_path = ""
+            # Per-page try/except — a single Playwright crash (e.g. "Execution
+            # context was destroyed" mid-evaluate) must NOT take down the
+            # scrape. We log a stub record and move on.
             try:
-                slug = slugify(parsed.get("opportunity_no") or parsed.get("title") or f"opp{index}")[:60]
-                out = snapshots_root / f"{slug}.png"
-                page.screenshot(path=str(out), full_page=True, timeout=15000)
-                snapshot_path = str(out)
-            except Exception:
-                pass
-            parsed.update(
-                {
-                    "matched_keyword": match["keyword"],
-                    "detail_url": match["url"],
-                    "documents": documents,
-                    "downloaded_files": downloaded_files,
-                    "snapshot_path": snapshot_path,
-                }
-            )
-            records.append(parsed)
+                page.goto(match["url"], wait_until="domcontentloaded")
+                page.wait_for_timeout(1500)
+                resolve_multiple_windows(page)
+                try:
+                    body_text = page.locator("body").inner_text(timeout=5000)
+                except (PlaywrightTimeoutError, PlaywrightError):
+                    body_text = ""
+                parsed = parse_detail_text(body_text)
+                documents = extract_document_info(page)
+                if not parsed.get("title"):
+                    parsed["title"] = match["title"]
+                if not documents and parsed.get("document_names"):
+                    documents = [{"text": name, "href": ""} for name in parsed["document_names"]]
+                downloaded_files: list[str] = []
+                if documents and not skip_downloads:
+                    doc_dir = downloads_root / f"{index:03d}-{slugify(parsed.get('opportunity_no') or parsed.get('title') or 'documents')}"
+                    try:
+                        downloaded_files = download_documents_from_detail(page, doc_dir)
+                    except (PlaywrightTimeoutError, PlaywrightError):
+                        downloaded_files = []
+                # Snapshot the detail page — persistent across scrape runs, per-opp
+                snapshot_path = ""
+                try:
+                    slug = slugify(parsed.get("opportunity_no") or parsed.get("title") or f"opp{index}")[:60]
+                    out = snapshots_root / f"{slug}.png"
+                    page.screenshot(path=str(out), full_page=True, timeout=15000)
+                    snapshot_path = str(out)
+                except Exception:
+                    pass
+                parsed.update(
+                    {
+                        "matched_keyword": match["keyword"],
+                        "detail_url": match["url"],
+                        "documents": documents,
+                        "downloaded_files": downloaded_files,
+                        "snapshot_path": snapshot_path,
+                    }
+                )
+                records.append(parsed)
+            except Exception as page_err:  # noqa: BLE001
+                records.append(
+                    {
+                        "title": match.get("title", ""),
+                        "matched_keyword": match.get("keyword", ""),
+                        "detail_url": match.get("url", ""),
+                        "documents": [],
+                        "downloaded_files": [],
+                        "snapshot_path": "",
+                        "scrape_error": str(page_err)[:300],
+                    }
+                )
 
         json_path, csv_path = write_outputs(records, output_dir)
         context.close()

@@ -82,23 +82,44 @@ async def run_scrape_job(
         if profile_root:
             profile_root.mkdir(parents=True, exist_ok=True)
 
+        # Trust the persistent profile: if a non-empty Cookies file already exists
+        # we skip the visible-browser QR step and go straight to a headless scrape.
+        # Downloads succeed when the session is still valid, fail gracefully when
+        # it's not — much less brittle than the page.evaluate-based login probe
+        # which kept dying with "Execution context was destroyed".
+        cookies_file = profile_root / "Default" / "Cookies" if profile_root else None
+        cookies_present = bool(
+            cookies_file and cookies_file.exists() and cookies_file.stat().st_size > 1024
+        )
+        effective_login_wait = 0 if (with_docs and cookies_present) else (
+            login_wait_seconds if with_docs else 0
+        )
+
+        def _notify_safe(text: str) -> None:
+            try:
+                from app.telegram_bot import send_text
+                send_text(notify_chat_id, text)
+            except Exception:
+                pass
+
+        if with_docs and cookies_present:
+            _notify_safe(
+                "🍪 <b>Reusing saved Singpass session</b> — skipping QR step. "
+                "If downloads come back empty, run /scrape_docs again to refresh the session."
+            )
+
         def _login_state(state: str) -> None:
             msg = {
                 "browser_open": "🪟 Chrome opened on your Mac. Scan Singpass QR to log in — I'll poll for access every 3s.",
                 "login_detected": "✅ Singpass login detected — starting keyword scrape + document download.",
                 "login_timeout": f"⏱ Login wait expired after {login_wait_seconds}s — proceeding without doc access.",
             }.get(state)
-            if not msg:
-                return
-            try:
-                from app.telegram_bot import send_text
-                send_text(notify_chat_id, msg)
-            except Exception:
-                pass
+            if msg:
+                _notify_safe(msg)
 
         # Timeout budget: docs mode needs login wait + download time, so add headroom
         effective_timeout = settings.scrape_timeout_seconds + (
-            login_wait_seconds + 300 if with_docs else 0
+            effective_login_wait + 300 if with_docs else 0
         )
 
         # For docs mode, use a persistent output dir so downloads survive past job end
@@ -113,10 +134,12 @@ async def run_scrape_job(
                     output_dir=output_dir,
                     max_total=max_pages * 15,
                     profile_dir=str(profile_root) if profile_root else str(Path(output_dir) / "profile"),
-                    headless=not with_docs,
+                    # Hide browser when we're trusting cached cookies — only pop a
+                    # visible window if we genuinely need the user to scan a QR.
+                    headless=not (with_docs and effective_login_wait > 0),
                     skip_downloads=not with_docs,
-                    wait_for_login_seconds=login_wait_seconds if with_docs else 0,
-                    on_login_state=_login_state if with_docs else None,
+                    wait_for_login_seconds=effective_login_wait,
+                    on_login_state=_login_state if with_docs and effective_login_wait > 0 else None,
                 )
             return await asyncio.wait_for(asyncio.to_thread(_blocking), timeout=effective_timeout)
 
