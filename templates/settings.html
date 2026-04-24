@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}Settings — beepbop{% endblock %}
+{% block content %}
+<h1 class="text-xl font-semibold mb-4">Settings</h1>
+<p class="text-sm text-slate-600 mb-6">Configure connected services. Values set here override <code>.env</code>. Nothing here is logged.</p>
+
+<!-- Google OAuth -->
+<div class="bg-white border border-slate-200 rounded p-5 mb-4">
+  <div class="flex items-center justify-between mb-3">
+    <h2 class="font-semibold">Google Sign-In</h2>
+    {% if summary.google.configured %}
+      <span class="text-xs px-2 py-0.5 rounded bg-emerald-100 text-emerald-800">configured ({{ summary.google.source }})</span>
+    {% else %}
+      <span class="text-xs px-2 py-0.5 rounded bg-rose-100 text-rose-800">not set</span>
+    {% endif %}
+  </div>
+  <ol class="text-sm space-y-1 text-slate-700 list-decimal list-inside mb-3">
+    <li>Open <a class="text-blue-700 underline" target="_blank" href="https://console.cloud.google.com/apis/credentials">Google Cloud Credentials</a> → Create Credentials → OAuth client ID → Web application.</li>
+    <li>Authorized redirect URI: <code class="bg-slate-100 px-1 rounded select-all">{{ summary.google.redirect_uri }}</code>
+      <button onclick="navigator.clipboard.writeText('{{ summary.google.redirect_uri }}')" class="ml-2 text-xs text-slate-500 hover:text-slate-900">copy</button>
+    </li>
+    <li>Paste the Client ID + Secret below.</li>
+  </ol>
+  <form method="post" action="/settings/google" class="grid grid-cols-1 gap-2">
+    <label class="text-xs text-slate-500">Client ID {% if summary.google.configured %}<span class="text-slate-400">(current: {{ summary.google.client_id_masked }})</span>{% endif %}</label>
+    <input name="client_id" class="border border-slate-300 rounded px-3 py-2 text-sm" placeholder="xxxxx.apps.googleusercontent.com" />
+    <label class="text-xs text-slate-500 mt-1">Client Secret</label>
+    <input name="client_secret" type="password" class="border border-slate-300 rounded px-3 py-2 text-sm" placeholder="GOCSPX-…" />
+    <button type="submit" class="mt-2 self-start px-3 py-1.5 bg-slate-900 text-white rounded text-xs">Save Google credentials</button>
+  </form>
+</div>
+
+<!-- Telegram -->
+<div class="bg-white border border-slate-200 rounded p-5 mb-4">
+  <div class="flex items-center justify-between mb-3">
+    <h2 class="font-semibold">Telegram bot</h2>
+    {% if summary.telegram.configured %}
+      <span class="text-xs px-2 py-0.5 rounded bg-emerald-100 text-emerald-800">configured ({{ summary.telegram.source }})</span>
+    {% else %}
+      <span class="text-xs px-2 py-0.5 rounded bg-rose-100 text-rose-800">not set</span>
+    {% endif %}
+  </div>
+  <ol class="text-sm space-y-1 text-slate-700 list-decimal list-inside mb-3">
+    <li>Open Telegram, DM <a class="text-blue-700 underline" target="_blank" href="https://t.me/BotFather">@BotFather</a>. Run <code>/newbot</code>.</li>
+    <li>Save the token, paste below.</li>
+    <li>DM your new bot once — we'll auto-detect your chat ID.</li>
+  </ol>
+  <form method="post" action="/settings/telegram" class="grid grid-cols-1 gap-2">
+    <label class="text-xs text-slate-500">Bot Token {% if summary.telegram.configured %}<span class="text-slate-400">(current: {{ summary.telegram.token_masked }})</span>{% endif %}</label>
+    <input name="token" type="password" class="border border-slate-300 rounded px-3 py-2 text-sm" placeholder="123456:ABC…" />
+    <label class="text-xs text-slate-500 mt-1">Chat ID (optional — auto-detect runs on save)</label>
+    <input name="chat_id" class="border border-slate-300 rounded px-3 py-2 text-sm" placeholder="{{ summary.telegram.chat_id }}" />
+    <div class="flex gap-2 mt-2">
+      <button type="submit" class="px-3 py-1.5 bg-slate-900 text-white rounded text-xs">Save Telegram</button>
+      <button type="submit" formaction="/settings/telegram/test" class="px-3 py-1.5 border border-slate-300 rounded text-xs">Send test ping</button>
+    </div>
+  </form>
+</div>
+
+<!-- Anthropic -->
+<div class="bg-white border border-slate-200 rounded p-5 mb-4">
+  <div class="flex items-center justify-between mb-1">
+    <h2 class="font-semibold">Anthropic (Claude)</h2>
+    {% if summary.anthropic.configured %}
+      <span class="text-xs px-2 py-0.5 rounded bg-emerald-100 text-emerald-800">configured (env)</span>
+    {% else %}
+      <span class="text-xs px-2 py-0.5 rounded bg-rose-100 text-rose-800">not set</span>
+    {% endif %}
+  </div>
+  <p class="text-sm text-slate-600">Model: <code>{{ summary.anthropic.model }}</code> · key: <code>{{ summary.anthropic.key_masked or '(none)' }}</code></p>
+  <p class="text-xs text-slate-500 mt-2">Set via <code>ANTHROPIC_API_KEY</code> in <code>.env</code>. Used for match scoring, clarifications, prerequisites, policy decisions, email drafting.</p>
+</div>
+
+<!-- gsk -->
+<div class="bg-white border border-slate-200 rounded p-5 mb-4">
+  <div class="flex items-center justify-between mb-1">
+    <h2 class="font-semibold">Genspark CLI (gsk)</h2>
+    {% if summary.gsk.ok %}
+      <span class="text-xs px-2 py-0.5 rounded bg-emerald-100 text-emerald-800">logged in</span>
+    {% else %}
+      <span class="text-xs px-2 py-0.5 rounded bg-amber-100 text-amber-800">needs login</span>
+    {% endif %}
+  </div>
+  {% if summary.gsk.ok %}
+  <p class="text-sm text-slate-600">Slides, sheets, email, calendar, phone all routed through gsk.</p>
+  {% else %}
+  <p class="text-sm text-slate-700">Run in your terminal:</p>
+  <pre class="bg-slate-900 text-slate-100 rounded px-3 py-2 text-xs my-2 overflow-x-auto">gsk login</pre>
+  <p class="text-xs text-slate-500">{% if summary.gsk.error %}Error: {{ summary.gsk.error }}{% endif %}</p>
+  {% endif %}
+</div>
+{% endblock %}

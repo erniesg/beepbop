@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}beepbop — opportunities{% endblock %}
+{% block content %}
+<div class="flex items-center justify-between mb-6">
+  <div>
+    <h1 class="text-2xl font-semibold tracking-tight">Opportunities</h1>
+    <p class="text-sm text-slate-500 mt-0.5">Scored against your creative-studio context · click any row for pitch artifacts + compliance check</p>
+  </div>
+  <div class="flex gap-2">
+    <button hx-post="/api/score-all" hx-swap="none"
+            hx-on::after-request="setTimeout(()=>location.reload(), 2000)"
+            class="px-3 py-1.5 bg-slate-900 text-white rounded text-sm hover:bg-slate-800 transition">
+      Score all
+    </button>
+    <button hx-post="/api/scrapes" hx-swap="none"
+            class="px-3 py-1.5 border border-slate-300 rounded text-sm hover:bg-slate-50 transition">
+      Scrape GeBIZ
+    </button>
+  </div>
+</div>
+
+{% if not opportunities %}
+<div class="bg-white border border-slate-200 rounded p-8 text-center text-slate-500">
+  <p class="mb-2">No opportunities yet.</p>
+  <p class="text-sm">Run <code>python -m app.seed</code> to load the demo set, or click "Scrape GeBIZ now".</p>
+</div>
+{% else %}
+<div class="bg-white border border-slate-200 rounded-lg overflow-hidden shadow-sm">
+  <table class="w-full text-sm">
+    <thead class="bg-slate-50 text-slate-500 text-xs font-medium uppercase tracking-wider">
+      <tr>
+        <th class="text-left px-4 py-3 w-16">Score</th>
+        <th class="text-left px-4 py-3">Title</th>
+        <th class="text-left px-4 py-3 w-72">Agency</th>
+        <th class="text-left px-4 py-3 w-40">Closing</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for o in opportunities | sort(attribute='match_score', reverse=true) %}
+      <tr class="border-t border-slate-100 hover:bg-slate-50 transition-colors cursor-pointer"
+          onclick="location.href='/opportunities/{{ o.id }}'">
+        <td class="px-4 py-3">
+          {% if o.match_score is not none %}
+            {% set score = o.match_score %}
+            {% if score >= 0.7 %}{% set cls = 'bg-emerald-50 text-emerald-700 border-emerald-200' %}
+            {% elif score >= 0.4 %}{% set cls = 'bg-amber-50 text-amber-700 border-amber-200' %}
+            {% else %}{% set cls = 'bg-slate-50 text-slate-500 border-slate-200' %}{% endif %}
+            <span class="inline-flex items-center justify-center px-2 py-0.5 rounded border text-xs font-mono tabular-nums {{ cls }}">{{ '%.2f' % score }}</span>
+          {% else %}
+            <span class="text-slate-300 text-xs">—</span>
+          {% endif %}
+        </td>
+        <td class="px-4 py-3 text-slate-800 font-medium">{{ o.title }}</td>
+        <td class="px-4 py-3 text-slate-500 text-xs">{{ o.agency or '—' }}</td>
+        <td class="px-4 py-3 text-slate-500 text-xs tabular-nums">{{ o.closing or '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+<p class="text-xs text-slate-400 mt-3 text-center">{{ opportunities|length }} opportunities · sorted by match score</p>
+{% endif %}
+{% endblock %}

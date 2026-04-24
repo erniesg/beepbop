@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}beepbop{% endblock %}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/htmx.org@2.0.3"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    :root { --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            --font-mono: 'JetBrains Mono', ui-monospace, monospace; }
+    html { font-feature-settings: 'cv11', 'ss01'; }
+    body { font-family: var(--font-sans); -webkit-font-smoothing: antialiased; }
+    code, pre, .font-mono { font-family: var(--font-mono); }
+    button, a { transition: all 150ms cubic-bezier(0.4, 0, 0.2, 1); }
+    button:active { transform: scale(0.98); }
+  </style>
+</head>
+<body class="bg-white text-slate-900">
+  <header class="border-b border-slate-100">
+    <div class="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+      <a href="/" class="font-semibold tracking-tight text-slate-900">beepbop<span class="text-slate-400">.</span></a>
+      {% if user %}
+      <div class="flex items-center gap-4 text-sm">
+        {% if user.picture %}<img src="{{ user.picture }}" class="w-7 h-7 rounded-full" />{% endif %}
+        <span class="text-slate-500">{{ user.email }}</span>
+        <a href="/settings" class="text-slate-400 hover:text-slate-900">settings</a>
+        <form method="post" action="/logout"><button class="text-slate-400 hover:text-slate-900">sign out</button></form>
+      </div>
+      {% endif %}
+    </div>
+  </header>
+  <main class="max-w-6xl mx-auto px-6 py-10">
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

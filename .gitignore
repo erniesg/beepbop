@@ -1,0 +1,17 @@
+.claude/settings.local.json
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+.env.local
+data/*.db
+data/*.db-journal
+data/downloads/
+tmp/
+.pytest_cache/
+.ruff_cache/
+node_modules/
+dist/
+*.log
+.DS_Store
