@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import base64
+import os
 from pathlib import Path
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
 from app import __version__
@@ -28,6 +31,44 @@ app.add_middleware(
     same_site="lax",
     https_only=settings.app_env == "prod",
 )
+
+
+# ---------------------------------------------------------------------------
+# Public-site password gate (HTTP Basic). Disabled by default; enable by setting
+# BEEPBOP_GATE_PASSWORD in the env. /healthz, /webhooks/*, and static asset
+# routes stay open so Cloudflare health checks + the Telegram bot keep working.
+# ---------------------------------------------------------------------------
+
+_GATE_USERNAME = os.environ.get("BEEPBOP_GATE_USERNAME", "demo")
+_GATE_PASSWORD = os.environ.get("BEEPBOP_GATE_PASSWORD", "")  # empty → gate off
+_GATE_BYPASS_PREFIXES = ("/healthz", "/webhooks/", "/static/", "/snapshots/")
+
+
+class BasicAuthGate(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        # No password set in env? Gate disabled — pass straight through.
+        if not _GATE_PASSWORD:
+            return await call_next(request)
+        path = request.url.path
+        if any(path.startswith(p) for p in _GATE_BYPASS_PREFIXES):
+            return await call_next(request)
+        auth = request.headers.get("Authorization", "")
+        if auth.startswith("Basic "):
+            try:
+                raw = base64.b64decode(auth[len("Basic "):]).decode("utf-8", errors="ignore")
+                user, _, pw = raw.partition(":")
+                if user == _GATE_USERNAME and pw == _GATE_PASSWORD:
+                    return await call_next(request)
+            except Exception:  # noqa: BLE001
+                pass
+        return Response(
+            content="Authentication required.",
+            status_code=401,
+            headers={"WWW-Authenticate": 'Basic realm="beepbop"'},
+        )
+
+
+app.add_middleware(BasicAuthGate)
 
 static_dir = ROOT / "static"
 if static_dir.exists():
@@ -408,6 +449,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     "/forget &lt;target&gt; — clear (all, preferences, rates, or a key)\n"
                     "/scrape [keywords] — rescan GeBIZ (e.g. <code>/scrape photography workshop</code>)\n"
                     "/scrape_docs [keywords] — scrape WITH tender-doc download (Singpass handoff)\n"
+                    "/scrape_awarded [keywords] — scrape Closed/awarded tenders (prices for /pricing)\n"
                     "/jobs — recent scrape jobs + status\n"
                     "/artifacts [opp_id] — recent decks + quotes (URLs)\n"
                     "/pricing &lt;id&gt; — competitive pricing analysis for an opp\n"
@@ -492,10 +534,11 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                         send_text(chat_id, f"Opportunity {opp_id} not found")
                     else:
                         send_opportunity_card(chat_id, opp)
-            elif cmd in ("/scrape", "/scrape_docs"):
+            elif cmd in ("/scrape", "/scrape_docs", "/scrape_awarded"):
                 from app.scraper import ScrapeAlreadyRunning, create_scrape_job, run_scrape_job
                 from app.telegram_bot import _html_escape
                 with_docs = (cmd == "/scrape_docs")
+                awarded_only = (cmd == "/scrape_awarded")
                 kws = [w.strip() for w in (args or "").replace(",", " ").split() if w.strip()]
                 if not kws:
                     from app.matching import keywords_from_context
@@ -508,7 +551,9 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     send_text(chat_id, f"⏳ Already scraping: <code>{_html_escape(str(e))}</code>\nUse <b>/jobs</b> to check progress.")
                     return {"ok": True, "command": cmd, "stage": "already_running"}
 
-                background_tasks.add_task(run_scrape_job, job_id, kws, 3, str(chat_id), with_docs, 120)
+                background_tasks.add_task(
+                    run_scrape_job, job_id, kws, 3, str(chat_id), with_docs, 120, awarded_only,
+                )
                 if with_docs:
                     send_text(
                         chat_id,
@@ -519,6 +564,14 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                         f"(polling every 3s, up to 2 min max wait).\n"
                         f"Your Singpass session is saved to <code>~/.beepbop/gebiz_profile</code>, "
                         f"so subsequent <code>/scrape_docs</code> usually skip the QR."
+                    )
+                elif awarded_only:
+                    send_text(
+                        chat_id,
+                        f"💰 <b>Scrape #{job_id} started (awarded/closed mode)</b>\n"
+                        f"Keywords: <code>{_html_escape(' '.join(kws))}</code>\n"
+                        f"Pulling Closed-tab tenders with awarded amounts + suppliers — "
+                        f"feeds /pricing competitive analysis. ETA 1–5 min. <b>/jobs</b> to poll."
                     )
                 else:
                     send_text(

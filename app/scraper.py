@@ -54,6 +54,7 @@ async def run_scrape_job(
     notify_chat_id: str | None = None,
     with_docs: bool = False,
     login_wait_seconds: int = 120,
+    awarded_only: bool = False,
 ) -> dict:
     """Execute a previously-created scrape job. Ingests results, updates status.
 
@@ -121,6 +122,7 @@ async def run_scrape_job(
                     skip_downloads=not with_docs,
                     wait_for_login_seconds=login_wait_seconds if with_docs else 0,
                     on_login_state=_login_state if with_docs else None,
+                    awarded_only=awarded_only,
                 )
             return await asyncio.wait_for(asyncio.to_thread(_blocking), timeout=effective_timeout)
 

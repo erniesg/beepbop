@@ -36,10 +36,37 @@ def conn() -> Iterator[sqlite3.Connection]:
 
 
 def init() -> None:
-    """Create all tables if missing."""
+    """Create all tables if missing, then run idempotent additive migrations."""
     with conn() as c:
         c.executescript(SCHEMA_PATH.read_text())
+    _run_additive_migrations()
     print(f"[db] initialized at {get_settings().sqlite_path}", file=sys.stderr)
+
+
+# Additive-only migrations: each statement runs and we swallow the
+# "duplicate column" error when the column already exists. We avoid a
+# real migration framework because the hackathon timeline doesn't justify it.
+_ADDITIVE_MIGRATIONS: list[str] = [
+    "ALTER TABLE opportunities ADD COLUMN awarded_amount REAL",
+    "ALTER TABLE opportunities ADD COLUMN awarded_supplier TEXT",
+    "ALTER TABLE opportunities ADD COLUMN awarded_at TEXT",
+    "ALTER TABLE opportunities ADD COLUMN award_currency TEXT",
+]
+
+
+def _run_additive_migrations() -> None:
+    with conn() as c:
+        for sql in _ADDITIVE_MIGRATIONS:
+            try:
+                c.execute(sql)
+            except sqlite3.OperationalError as e:
+                if "duplicate column" not in str(e).lower():
+                    raise
+
+
+def ensure_schema() -> None:
+    """Run migrations without re-creating tables — safe at app startup."""
+    _run_additive_migrations()
 
 
 def count(table: str) -> int:

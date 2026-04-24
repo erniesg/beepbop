@@ -69,7 +69,18 @@ FIELD_LABELS = [
     "Closed",
     "Closing on",
     "Awarding Agency",
+    # Awarded-tender fields — present only when status is AWARDED
+    "Awarded To",
+    "Awarded Suppliers",
+    "Successful Tenderer",
+    "Awarded Amount",
+    "Total Awarded Amount",
+    "Awarded Sum",
+    "Contract Sum",
+    "Awarded Date",
+    "Awarded On",
 ]
+_PRICE_RE = re.compile(r"S?\$?\s*([\d,]+(?:\.\d+)?)", re.I)
 STOP_TOKENS = set(FIELD_LABELS + SECTION_MARKERS + STATUS_WORDS + ["Print", "#"])
 STOP_TOKENS.update(
     [
@@ -292,7 +303,33 @@ def parse_detail_text(text: str) -> dict[str, Any]:
         "all_emails": emails,
         "all_phones": phones,
         "document_names": document_names,
+        # Awarded-only — first non-empty value across the synonym labels wins
+        "awarded_supplier": (
+            extract_value_after(lines, "Awarded To")
+            or extract_value_after(lines, "Awarded Suppliers")
+            or extract_value_after(lines, "Successful Tenderer")
+        ),
+        "awarded_amount_raw": (
+            extract_value_after(lines, "Total Awarded Amount")
+            or extract_value_after(lines, "Awarded Amount")
+            or extract_value_after(lines, "Awarded Sum")
+            or extract_value_after(lines, "Contract Sum")
+        ),
+        "awarded_at": (
+            extract_value_after(lines, "Awarded Date")
+            or extract_value_after(lines, "Awarded On")
+        ),
     }
+    # Parse "S$ 12,345.67" style amounts to a numeric value + currency
+    raw = result.get("awarded_amount_raw") or ""
+    if raw:
+        m = _PRICE_RE.search(raw)
+        if m:
+            try:
+                result["awarded_amount"] = float(m.group(1).replace(",", ""))
+            except ValueError:
+                result["awarded_amount"] = None
+        result["award_currency"] = "SGD" if ("S$" in raw or "SGD" in raw.upper()) else ""
     return result
 
 
@@ -486,9 +523,32 @@ def download_documents_from_detail(page, destination: Path) -> list[str]:
     return downloaded
 
 
-def search_keyword(page, keyword: str, limit: int, days_filter: str) -> list[dict[str, str]]:
+def search_keyword(
+    page,
+    keyword: str,
+    limit: int,
+    days_filter: str,
+    *,
+    awarded_only: bool = False,
+) -> list[dict[str, str]]:
     ensure_search_page(page)
     resolve_multiple_windows(page)
+    if awarded_only:
+        # GeBIZ's BOListing page renders "Open (N)" / "Closed (M)" tabs above
+        # results — Closed includes awarded tenders with their final price.
+        # Try a few selector variants because the tab label sometimes carries
+        # the count inline ("Closed (40)").
+        for sel in ('text=/^Closed\\s*\\(/i', 'text=/^Closed$/i', 'a:has-text("Closed")', 'button:has-text("Closed")'):
+            try:
+                tab = page.locator(sel).first
+                if tab.count():
+                    tab.click(timeout=3000)
+                    page.wait_for_timeout(1500)
+                    break
+            except (PlaywrightTimeoutError, PlaywrightError):
+                continue
+            except Exception:  # noqa: BLE001
+                continue
     if days_filter in {"2", "7"}:
         label = "Past 2 days" if days_filter == "2" else "Past 7 days"
         try:
@@ -617,6 +677,7 @@ def run_search(
     skip_downloads: bool = True,
     wait_for_login_seconds: int = 0,
     on_login_state: "callable | None" = None,
+    awarded_only: bool = False,
 ) -> dict:
     """Importable entry point. Returns {records, json_path, csv_path}.
 
@@ -690,7 +751,10 @@ def run_search(
         matches: list[dict[str, str]] = []
         seen_urls: set[str] = set()
         for keyword in keywords:
-            keyword_matches = search_keyword(page, keyword, limit_per_keyword, days_filter)
+            keyword_matches = search_keyword(
+                page, keyword, limit_per_keyword, days_filter,
+                awarded_only=awarded_only,
+            )
             for match in keyword_matches:
                 if match["url"] in seen_urls:
                     continue

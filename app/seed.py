@@ -33,15 +33,22 @@ def ingest_opportunities(records: Iterable[dict], context_id: int | None = None)
                 """
                 INSERT INTO opportunities
                   (opportunity_no, title, agency, status, closing, procurement_category,
-                   detail_url, raw_json, matched_keyword, context_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                   detail_url, raw_json, matched_keyword, context_id,
+                   awarded_amount, awarded_supplier, awarded_at, award_currency)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(opportunity_no) DO UPDATE SET
                   title = excluded.title,
                   agency = excluded.agency,
                   status = excluded.status,
                   closing = excluded.closing,
                   procurement_category = excluded.procurement_category,
-                  raw_json = excluded.raw_json
+                  raw_json = excluded.raw_json,
+                  -- Only overwrite awarded fields when the new scrape actually
+                  -- has them — preserves data when re-scraping in OPEN mode.
+                  awarded_amount = COALESCE(excluded.awarded_amount, opportunities.awarded_amount),
+                  awarded_supplier = COALESCE(NULLIF(excluded.awarded_supplier, ''), opportunities.awarded_supplier),
+                  awarded_at = COALESCE(NULLIF(excluded.awarded_at, ''), opportunities.awarded_at),
+                  award_currency = COALESCE(NULLIF(excluded.award_currency, ''), opportunities.award_currency)
                 """,
                 (
                     opp_no,
@@ -54,6 +61,10 @@ def ingest_opportunities(records: Iterable[dict], context_id: int | None = None)
                     raw_json,
                     r.get("matched_keyword"),
                     context_id,
+                    r.get("awarded_amount"),
+                    r.get("awarded_supplier"),
+                    r.get("awarded_at"),
+                    r.get("award_currency"),
                 ),
             )
             rows += 1
