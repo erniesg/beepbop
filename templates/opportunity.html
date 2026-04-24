@@ -136,21 +136,37 @@ async function runPricing(oppId){
 </div>
 
 <div class="mt-8 pt-6 border-t border-slate-100">
-  <h3 class="font-semibold text-sm text-slate-900 mb-3">Tender documents <span class="text-xs font-normal text-slate-400 ml-1">from GeBIZ listing</span></h3>
+  <h3 class="font-semibold text-sm text-slate-900 mb-3">Tender snapshot <span class="text-xs font-normal text-slate-400 ml-1">from GeBIZ at scrape time</span></h3>
+  {% if snapshot_url %}
+  <a href="{{ snapshot_url }}" target="_blank" rel="noopener" class="block mb-3">
+    <img src="{{ snapshot_url }}" alt="GeBIZ page snapshot" class="max-w-xl border border-slate-200 rounded shadow-sm hover:shadow-md transition cursor-zoom-in">
+  </a>
+  {% else %}
+  <p class="text-sm text-slate-400 italic mb-3">No snapshot captured yet — re-scrape this opp to grab one.</p>
+  {% endif %}
   {% if documents %}
+  <h4 class="text-xs uppercase tracking-wider text-slate-400 mt-4 mb-2">Tender documents ({{ documents|length }})</h4>
   <ul class="text-sm space-y-1 mb-2">
     {% for d in documents %}
     <li class="flex items-start gap-2">
       <span class="text-slate-400 mt-0.5">📄</span>
       <span class="text-slate-700">{{ d.text }}</span>
-      {% if not d.downloadable or d.downloadable == 'false' %}
+      {% set local = namespace(name=None) %}
+      {% for f in downloaded_files %}
+        {% if d.text and f.endswith(d.text) or (d.text|replace(' ', '_')) in f %}
+          {% set local.name = f %}
+        {% endif %}
+      {% endfor %}
+      {% if local.name %}
+      <a href="file://{{ local.name }}" class="text-emerald-600 underline text-xs ml-1">↓ local</a>
+      {% elif not d.downloadable or d.downloadable == 'false' %}
       <span class="text-xs text-amber-600 ml-1">Singpass-gated</span>
       {% endif %}
     </li>
     {% endfor %}
   </ul>
-  <p class="text-xs text-slate-500">Download requires Singpass.
-    {% if opp.detail_url %}<a href="{{ opp.detail_url }}" target="_blank" rel="noopener" class="underline">Open on GeBIZ ↗</a> to log in + download.{% endif %}
+  <p class="text-xs text-slate-500">
+    {% if opp.detail_url %}<a href="{{ opp.detail_url }}" target="_blank" rel="noopener" class="underline">Open on GeBIZ ↗</a> to log in + download manually, or use <code class="text-slate-600">/scrape_docs</code> on Telegram.{% endif %}
   </p>
   {% else %}
   <p class="text-sm text-slate-400 italic">No documents listed on the GeBIZ page.</p>

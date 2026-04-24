@@ -33,6 +33,11 @@ static_dir = ROOT / "static"
 if static_dir.exists():
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
+# Persistent snapshot dir — scraper writes PNGs here, served at /snapshots/<filename>.png
+snapshots_dir = Path.home() / ".beepbop" / "snapshots"
+snapshots_dir.mkdir(parents=True, exist_ok=True)
+app.mount("/snapshots", StaticFiles(directory=str(snapshots_dir)), name="snapshots")
+
 import json as _json_mod
 templates = Jinja2Templates(directory=str(ROOT / "templates"))
 templates.env.filters["fromjson"] = lambda s: _json_mod.loads(s) if s else []
@@ -207,18 +212,30 @@ def opportunity_detail(request: Request, opp_id: int) -> HTMLResponse:
     if not opp:
         return HTMLResponse("<h1>Not found</h1>", status_code=404)
     timeline = list_outreach(opp_id)
-    # Extract document filenames from raw_json (captured by scraper, even without download)
+    # Extract document filenames + snapshot + downloaded paths from raw_json
     import json as _j
     docs = []
+    snapshot_url = ""
+    downloaded_files: list[str] = []
     try:
         raw = _j.loads(opp.get("raw_json") or "{}")
         docs = raw.get("documents") or []
+        snap_path = raw.get("snapshot_path") or ""
+        if snap_path:
+            snap_name = Path(snap_path).name
+            if (Path.home() / ".beepbop" / "snapshots" / snap_name).exists():
+                snapshot_url = f"/snapshots/{snap_name}"
+        downloaded_files = raw.get("downloaded_files") or []
     except Exception:
-        docs = []
+        pass
     return templates.TemplateResponse(
         request,
         "opportunity.html",
-        {"user": user, "opp": opp, "timeline": timeline, "documents": docs},
+        {
+            "user": user, "opp": opp, "timeline": timeline,
+            "documents": docs, "snapshot_url": snapshot_url,
+            "downloaded_files": downloaded_files,
+        },
     )
 
 

@@ -671,6 +671,8 @@ def run_search(
 
         records: list[dict[str, Any]] = []
         downloads_root = output_dir / "downloads"
+        snapshots_root = Path.home() / ".beepbop" / "snapshots"
+        snapshots_root.mkdir(parents=True, exist_ok=True)
         for index, match in enumerate(matches, start=1):
             page.goto(match["url"], wait_until="domcontentloaded")
             page.wait_for_timeout(1500)
@@ -685,12 +687,22 @@ def run_search(
             if documents and not skip_downloads:
                 doc_dir = downloads_root / f"{index:03d}-{slugify(parsed.get('opportunity_no') or parsed.get('title') or 'documents')}"
                 downloaded_files = download_documents_from_detail(page, doc_dir)
+            # Snapshot the detail page — persistent across scrape runs, per-opp
+            snapshot_path = ""
+            try:
+                slug = slugify(parsed.get("opportunity_no") or parsed.get("title") or f"opp{index}")[:60]
+                out = snapshots_root / f"{slug}.png"
+                page.screenshot(path=str(out), full_page=True, timeout=15000)
+                snapshot_path = str(out)
+            except Exception:
+                pass
             parsed.update(
                 {
                     "matched_keyword": match["keyword"],
                     "detail_url": match["url"],
                     "documents": documents,
                     "downloaded_files": downloaded_files,
+                    "snapshot_path": snapshot_path,
                 }
             )
             records.append(parsed)
