@@ -878,13 +878,10 @@ def run_search(
                     parsed["title"] = match["title"]
                 if not documents and parsed.get("document_names"):
                     documents = [{"text": name, "href": ""} for name in parsed["document_names"]]
-                # Award details live on a separate JSF tab on the SAME page — must
-                # be clicked in this live session before navigating away. Only
-                # bother when the listing flagged this tender as awarded OR we're
-                # explicitly in awarded-only mode.
-                if (parsed.get("status") in ("AWARDED", "PENDING AWARD")) or awarded_only:
-                    award_info = extract_award_details(page)
-                    parsed.update({k: v for k, v in award_info.items() if v not in (None, "")})
+                # IMPORTANT: download docs BEFORE clicking the Award tab, because
+                # the JSF tab switch hides the QUOTATION DOCUMENTS container.
+                # download_documents_from_detail relies on that container being
+                # in the DOM, and it's a no-op (returns []) if the tab moved.
                 downloaded_files: list[str] = []
                 if documents and not skip_downloads:
                     doc_dir = downloads_root / f"{index:03d}-{slugify(parsed.get('opportunity_no') or parsed.get('title') or 'documents')}"
@@ -892,6 +889,11 @@ def run_search(
                         downloaded_files = download_documents_from_detail(page, doc_dir)
                     except (PlaywrightTimeoutError, PlaywrightError):
                         downloaded_files = []
+                # Award details live on a separate JSF tab on the SAME page — click
+                # AFTER downloads since the click hides the documents section.
+                if (parsed.get("status") in ("AWARDED", "PENDING AWARD")) or awarded_only:
+                    award_info = extract_award_details(page)
+                    parsed.update({k: v for k, v in award_info.items() if v not in (None, "")})
                 # Snapshot the detail page — persistent across scrape runs, per-opp
                 snapshot_path = ""
                 try:

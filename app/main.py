@@ -450,6 +450,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     "/scrape [keywords] — rescan GeBIZ (e.g. <code>/scrape photography workshop</code>)\n"
                     "/scrape_docs [keywords] — scrape WITH tender-doc download (Singpass handoff)\n"
                     "/scrape_awarded [keywords] — scrape Closed/awarded tenders (prices for /pricing)\n"
+                    "/scrape_docs_awarded [keywords] — awarded tenders WITH PDF downloads + prices\n"
                     "/jobs — recent scrape jobs + status\n"
                     "/artifacts [opp_id] — recent decks + quotes (URLs)\n"
                     "/pricing &lt;id&gt; — competitive pricing analysis for an opp\n"
@@ -534,11 +535,11 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                         send_text(chat_id, f"Opportunity {opp_id} not found")
                     else:
                         send_opportunity_card(chat_id, opp)
-            elif cmd in ("/scrape", "/scrape_docs", "/scrape_awarded"):
+            elif cmd in ("/scrape", "/scrape_docs", "/scrape_awarded", "/scrape_docs_awarded"):
                 from app.scraper import ScrapeAlreadyRunning, create_scrape_job, run_scrape_job
                 from app.telegram_bot import _html_escape
-                with_docs = (cmd == "/scrape_docs")
-                awarded_only = (cmd == "/scrape_awarded")
+                with_docs = cmd in ("/scrape_docs", "/scrape_docs_awarded")
+                awarded_only = cmd in ("/scrape_awarded", "/scrape_docs_awarded")
                 kws = [w.strip() for w in (args or "").replace(",", " ").split() if w.strip()]
                 if not kws:
                     from app.matching import keywords_from_context
@@ -554,7 +555,16 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                 background_tasks.add_task(
                     run_scrape_job, job_id, kws, 3, str(chat_id), with_docs, 120, awarded_only,
                 )
-                if with_docs:
+                if with_docs and awarded_only:
+                    send_text(
+                        chat_id,
+                        f"📚💰 <b>Scrape #{job_id} started (docs + awarded mode)</b>\n"
+                        f"Keywords: <code>{_html_escape(' '.join(kws))}</code>\n"
+                        f"A Chrome window will pop up — <b>log in with Singpass</b>. "
+                        f"I'll click the Closed tab, then for each awarded tender: download its PDFs "
+                        f"AND parse $ amount + supplier off the Award tab. ETA 3–8 min."
+                    )
+                elif with_docs:
                     send_text(
                         chat_id,
                         f"🔍 <b>Scrape #{job_id} started (docs mode)</b>\n"
