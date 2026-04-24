@@ -14,5 +14,15 @@
     Google OAuth not yet configured. Set <code>GOOGLE_CLIENT_ID</code> / <code>GOOGLE_CLIENT_SECRET</code> in <code>.env</code>.
   </div>
   {% endif %}
+
+  {% if dev_mode %}
+  <div class="mt-6 pt-6 border-t border-slate-200">
+    <p class="text-xs uppercase tracking-wide text-slate-500 mb-2">Dev shortcut · APP_ENV=dev</p>
+    <a href="/dev/fake-login?email=hello@ernie.sg"
+       class="w-full inline-flex items-center justify-center gap-2 rounded-md px-4 py-2.5 bg-slate-900 text-white hover:bg-slate-700 text-sm font-medium">
+      Continue as <code class="font-mono">hello@ernie.sg</code> (demo)
+    </a>
+  </div>
+  {% endif %}
 </div>
 {% endblock %}

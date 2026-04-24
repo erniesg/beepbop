@@ -105,7 +105,10 @@ def login(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(
         request,
         "login.html",
-        {"has_google": bool(settings.google_client_id)},
+        {
+            "has_google": bool(settings.google_client_id),
+            "dev_mode": settings.app_env in ("dev", "test"),
+        },
     )
 
 

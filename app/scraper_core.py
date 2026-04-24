@@ -495,8 +495,25 @@ def is_logged_into_gebiz(page) -> bool:
 
 
 def ensure_search_page(page) -> None:
+    last_err: Exception | None = None
     for _ in range(3):
-        page.goto(BASE_URL, wait_until="domcontentloaded")
+        try:
+            page.goto(BASE_URL, wait_until="domcontentloaded", timeout=15000)
+        except PlaywrightError as e:
+            # net::ERR_ABORTED happens when GeBIZ's "Previous Session"
+            # warning hijacks the navigation mid-load. Wait briefly so the
+            # interstitial settles, then retry — the resolve_* helpers below
+            # will dismiss either dialog (Multiple Windows OR Active Session).
+            last_err = e
+            page.wait_for_timeout(2000)
+            try:
+                resolve_active_session_prompt(page)
+                resolve_multiple_windows(page)
+            except Exception:  # noqa: BLE001
+                pass
+            continue
+        # Both interstitial dialogs can intercept the load — handle both.
+        resolve_active_session_prompt(page)
         resolve_multiple_windows(page)
         try:
             page.wait_for_selector('[id="contentForm:j_idt179_searchBar_INPUT-SEARCH"]', timeout=6000)
@@ -504,7 +521,53 @@ def ensure_search_page(page) -> None:
             return
         except PlaywrightTimeoutError:
             page.wait_for_timeout(1500)
-    raise PlaywrightTimeoutError("Could not reach GeBIZ opportunities search page.")
+    raise PlaywrightTimeoutError(
+        f"Could not reach GeBIZ opportunities search page. last_err={last_err}"
+    )
+
+
+def resolve_active_session_prompt(page) -> bool:
+    """Dismiss GeBIZ's 'active session detected' dialog by clicking Ok.
+
+    Different from resolve_multiple_windows — this one shows when the same
+    Singpass account has a live session in another browser/tab. URL pattern
+    is .../activeUserSessionPrompt.xhtml. Body says 'We have detected an
+    active session that was logged in on …'. Buttons: Cancel | Ok. We click
+    Ok (invalidate the previous session) so the new scrape can proceed.
+    """
+    try:
+        url = page.url
+    except Exception:  # noqa: BLE001
+        url = ""
+    is_prompt_url = "activeUserSessionPrompt" in url
+    body_signal = False
+    if not is_prompt_url:
+        try:
+            body_signal = "active session that was logged in" in page.locator(
+                "body"
+            ).inner_text(timeout=1500)
+        except (PlaywrightTimeoutError, PlaywrightError):
+            return False
+    if not (is_prompt_url or body_signal):
+        return False
+    for selector in [
+        'button:has-text("Ok")',
+        'button:has-text("OK")',
+        'input[value="Ok"]',
+        'input[value="OK"]',
+        'text=/^\\s*Ok\\s*$/i',
+    ]:
+        try:
+            ok = page.locator(selector).first
+            if ok.count():
+                ok.click(timeout=3000)
+                page.wait_for_timeout(2500)
+                return True
+        except (PlaywrightTimeoutError, PlaywrightError):
+            continue
+        except Exception:  # noqa: BLE001
+            continue
+    return False
 
 
 def resolve_multiple_windows(page) -> bool:

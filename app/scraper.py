@@ -10,6 +10,10 @@ from pathlib import Path
 from app.config import get_settings
 from app.db import conn
 
+# Per-keyword result cap applied by scraper_core.run_search. Surfaced in the
+# done-DM so users understand "8 rows" means "cap hit" not "GeBIZ has 8".
+LIMIT_PER_KEYWORD = 8
+
 
 class ScrapeAlreadyRunning(RuntimeError):
     """A scrape is already in-flight — refuse to start another."""
@@ -131,6 +135,7 @@ async def run_scrape_job(
                 return run_search(
                     keywords=keywords,
                     output_dir=output_dir,
+                    limit_per_keyword=LIMIT_PER_KEYWORD,
                     max_total=effective_max,
                     profile_dir=str(profile_root) if profile_root else str(Path(output_dir) / "profile"),
                     # Visible browser whenever we need auth (docs OR awarded mode).
@@ -198,10 +203,30 @@ async def run_scrape_job(
                     f"\nℹ️ GeBIZ has zero matches for <code>{kw_list}</code> "
                     f"(open OR closed). Try a broader/related keyword."
                 )
+
+        # If we hit the per-keyword cap, surface it — otherwise the user sees
+        # "8 rows" and assumes that's all GeBIZ had. Includes the master count
+        # per keyword so they know how many were actually available.
+        cap_note = ""
+        expected_cap = LIMIT_PER_KEYWORD * len(keywords)
+        if rows >= expected_cap and tab_counts:
+            per_kw_bits = []
+            for kw in keywords:
+                tc = tab_counts.get(kw) or {}
+                master = tc.get("master", 0)
+                if master > LIMIT_PER_KEYWORD:
+                    per_kw_bits.append(f"<code>{kw}</code>: {master}")
+            if per_kw_bits:
+                cap_note = (
+                    f"\n📏 Capped at <b>{LIMIT_PER_KEYWORD}/keyword</b>. "
+                    f"GeBIZ actually has: {', '.join(per_kw_bits)}. "
+                    f"Ask me to raise the cap or pass more keywords to cover more."
+                )
+
         _notify(
             f"✅ <b>Scrape #{job_id} done</b>\n"
             f"Keywords: <code>{' '.join(keywords)[:120]}</code>\n"
-            f"Ingested: {rows} new/updated rows — use <b>/list</b>.{hint}"
+            f"Ingested: {rows} new/updated rows — use <b>/list</b>.{hint}{cap_note}"
         )
         return {"job_id": job_id, "rows_ingested": rows, "status": "done"}
 
