@@ -369,6 +369,33 @@ def page_requires_login_for_documents(page) -> bool:
     return "Please log in to view the Documents" in text
 
 
+def is_logged_into_gebiz(page) -> bool:
+    """Locator-based login probe — survives mid-page navigation.
+
+    After Singpass login GeBIZ shows a "Logout" link in the global header on every
+    page (and a logged-out session shows "Login" instead). Locator queries are
+    routed to the latest stable DOM snapshot by Playwright, so unlike page.evaluate
+    they don't blow up with "Execution context was destroyed" when GeBIZ does its
+    post-load JS redirects.
+    """
+    selectors = [
+        # Common header layouts across the trade-partner portal
+        'a:has-text("Logout")',
+        'a:has-text("Log Out")',
+        'button:has-text("Logout")',
+        'text=/^\\s*Logout\\s*$/i',
+    ]
+    for sel in selectors:
+        try:
+            if page.locator(sel).count() > 0:
+                return True
+        except PlaywrightError:
+            continue
+        except Exception:  # noqa: BLE001
+            continue
+    return False
+
+
 def ensure_search_page(page) -> None:
     for _ in range(3):
         page.goto(BASE_URL, wait_until="domcontentloaded")
@@ -629,12 +656,12 @@ def run_search(
                 pass
 
         if wait_for_login_seconds > 0:
-            # Singpass handoff: open GeBIZ home so the user can sign in. Poll the
-            # validate-doc URL on a separate tab so our check doesn't race with the
-            # user's own navigation in the primary tab.
+            # Singpass handoff: open GeBIZ home so the user can sign in. We poll the
+            # SAME tab (the user's tab) for a "Logout" link via Playwright locators,
+            # which queries the latest DOM snapshot and never crashes with
+            # "Execution context was destroyed" mid-navigation.
             page.goto("https://www.gebiz.gov.sg/", wait_until="domcontentloaded")
             page.wait_for_timeout(1500)
-            poll_page = context.new_page()
             if on_login_state:
                 try: on_login_state("browser_open")
                 except Exception: pass
@@ -642,32 +669,16 @@ def run_search(
             logged_in = False
             while time.time() < login_deadline:
                 try:
-                    poll_page.goto(
-                        DEFAULT_VALIDATE_DOC_URL,
-                        wait_until="domcontentloaded",
-                        timeout=10000,
-                    )
-                    # Let the page fully settle — DOM + JS redirects
-                    try:
-                        poll_page.wait_for_load_state("networkidle", timeout=6000)
-                    except PlaywrightTimeoutError:
-                        pass
-                    poll_page.wait_for_timeout(400)
-                    resolve_multiple_windows(poll_page)
-                    if documents_are_downloadable(poll_page):
+                    if is_logged_into_gebiz(page):
                         logged_in = True
                         if on_login_state:
                             try: on_login_state("login_detected")
                             except Exception: pass
                         break
                 except Exception:
-                    # Swallow navigation races; next tick will retry
+                    # Swallow any transient errors; next tick will retry
                     pass
                 time.sleep(3)
-            try:
-                poll_page.close()
-            except Exception:
-                pass
             if not logged_in and on_login_state:
                 try: on_login_state("login_timeout")
                 except Exception: pass

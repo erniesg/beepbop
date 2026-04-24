@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import time
@@ -19,6 +20,14 @@ from pathlib import Path
 from typing import Any, Callable
 
 import httpx
+
+# UUID v4 (project_id format) — used to scrape project_id out of free-text fields
+# (heartbeat "message" / "debug") when the gsk server doesn't promote it to a
+# top-level key in intermediate stream messages.
+_UUID_RE = re.compile(
+    r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b",
+    re.IGNORECASE,
+)
 
 GSK_BIN_CANDIDATES = [
     shutil.which("gsk"),
@@ -68,19 +77,38 @@ def _stream_log(record: dict) -> None:
 
 
 def _extract_project_id(payload: Any) -> str:
-    """Walk the dict shallowly for the first project_id / task_id / job_id."""
+    """Find a project_id anywhere useful in a streaming gsk message.
+
+    Tries (in order):
+      1. Top-level ``project_id`` / ``task_id`` / ``job_id`` keys
+      2. Same keys nested under ``data``
+      3. UUID v4 substring scan of free-text fields the server does emit in
+         every intermediate heartbeat (``message``, ``debug``, ``url``,
+         ``share_url``, ``project_url``) — the create_task endpoint does NOT
+         promote project_id to a top-level key mid-stream, but the URL it
+         eventually returns is built as ``/agents?id=<uuid>`` so any UUID in
+         these fields is the project_id.
+    """
     if not isinstance(payload, dict):
         return ""
     for key in ("project_id", "task_id", "job_id"):
         v = payload.get(key)
         if isinstance(v, str) and v:
             return v
-    data = payload.get("data")
-    if isinstance(data, dict):
-        for key in ("project_id", "task_id", "job_id"):
-            v = data.get(key)
-            if isinstance(v, str) and v:
-                return v
+    data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
+    for key in ("project_id", "task_id", "job_id"):
+        v = data.get(key)
+        if isinstance(v, str) and v:
+            return v
+    # Free-text scan — only safe to do across known string fields, otherwise
+    # we'd risk picking up a UUID from a tool_call_id or similar internal id.
+    for key in ("project_url", "share_url", "url", "message", "debug"):
+        for source in (payload, data):
+            v = source.get(key) if isinstance(source, dict) else None
+            if isinstance(v, str):
+                m = _UUID_RE.search(v)
+                if m:
+                    return m.group(0)
     return ""
 
 
@@ -131,6 +159,7 @@ def _create_task_streaming(
                              "status": resp.status_code, "body": err_body[:500]})
                 raise GskError(f"gsk HTTP {resp.status_code}: {err_body[:300]}")
 
+            line_count = 0
             for raw in resp.iter_lines():
                 line = (raw or "").strip()
                 if not line or not line.startswith("{"):
@@ -139,7 +168,19 @@ def _create_task_streaming(
                     msg = json.loads(line)
                 except json.JSONDecodeError:
                     continue
-                _stream_log({"ts": time.time(), "event": "line", "msg_keys": list(msg.keys())})
+                line_count += 1
+                # Log full body for the first 5 lines (so we can see what
+                # heartbeats actually contain) and a body snippet thereafter.
+                # Truncate aggressively — the final result can be 50KB+.
+                if line_count <= 5:
+                    _stream_log({"ts": time.time(), "event": "line",
+                                 "n": line_count, "body": msg})
+                else:
+                    snippet = {k: (v if not isinstance(v, str) else v[:200])
+                               for k, v in msg.items() if k != "data"}
+                    _stream_log({"ts": time.time(), "event": "line",
+                                 "n": line_count, "msg_keys": list(msg.keys()),
+                                 "snippet": snippet})
 
                 # Fire URL callback the first time we see a project_id anywhere
                 if on_project_id and not fired_pid:
