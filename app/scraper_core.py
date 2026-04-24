@@ -623,32 +623,45 @@ def run_search(
                 pass
 
         if wait_for_login_seconds > 0:
-            # Singpass handoff: open the user's dashboard (the natural post-login landing),
-            # let them auth, then poll the validate-doc URL explicitly each tick.
-            # (Singpass redirects to MY DASHBOARD, not back to the validate URL — so
-            # page.reload() would just refresh the dashboard and never detect doc access.)
+            # Singpass handoff: open GeBIZ home so the user can sign in. Poll the
+            # validate-doc URL on a separate tab so our check doesn't race with the
+            # user's own navigation in the primary tab.
             page.goto("https://www.gebiz.gov.sg/", wait_until="domcontentloaded")
             page.wait_for_timeout(1500)
+            poll_page = context.new_page()
             if on_login_state:
                 try: on_login_state("browser_open")
                 except Exception: pass
             login_deadline = time.time() + wait_for_login_seconds
             logged_in = False
             while time.time() < login_deadline:
-                # Navigate to the gated doc URL each tick — cookies apply across tabs
                 try:
-                    page.goto(DEFAULT_VALIDATE_DOC_URL, wait_until="domcontentloaded", timeout=10000)
-                    page.wait_for_timeout(800)
-                    resolve_multiple_windows(page)
+                    poll_page.goto(
+                        DEFAULT_VALIDATE_DOC_URL,
+                        wait_until="domcontentloaded",
+                        timeout=10000,
+                    )
+                    # Let the page fully settle — DOM + JS redirects
+                    try:
+                        poll_page.wait_for_load_state("networkidle", timeout=6000)
+                    except PlaywrightTimeoutError:
+                        pass
+                    poll_page.wait_for_timeout(400)
+                    resolve_multiple_windows(poll_page)
+                    if documents_are_downloadable(poll_page):
+                        logged_in = True
+                        if on_login_state:
+                            try: on_login_state("login_detected")
+                            except Exception: pass
+                        break
                 except Exception:
+                    # Swallow navigation races; next tick will retry
                     pass
-                if documents_are_downloadable(page):
-                    logged_in = True
-                    if on_login_state:
-                        try: on_login_state("login_detected")
-                        except Exception: pass
-                    break
                 time.sleep(3)
+            try:
+                poll_page.close()
+            except Exception:
+                pass
             if not logged_in and on_login_state:
                 try: on_login_state("login_timeout")
                 except Exception: pass
