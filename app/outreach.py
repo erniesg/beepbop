@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, Callable
 
 from app import gsk_client, matching, policy, telegram_bot
 from app.config import get_settings
@@ -120,11 +120,16 @@ def _extract_artifact_urls(res: dict) -> tuple[str, str]:
     return project_id, share_url
 
 
-def generate_deck(opportunity_id: int, ctx: dict) -> dict:
+def generate_deck(
+    opportunity_id: int,
+    ctx: dict,
+    *,
+    on_project_id: Callable[[str], None] | None = None,
+) -> dict:
     opp = get_opportunity(opportunity_id)
     if not opp:
         raise ValueError(f"opp {opportunity_id} not found")
-    res = gsk_client.create_slides(_deck_prompt(opp, ctx))
+    res = gsk_client.create_slides(_deck_prompt(opp, ctx), on_project_id=on_project_id)
     project_id, share_url = _extract_artifact_urls(res)
     with conn() as c:
         cur = c.execute(
@@ -141,11 +146,16 @@ def generate_deck(opportunity_id: int, ctx: dict) -> dict:
     return {"id": art_id, "kind": "deck", "share_url": share_url, "project_id": project_id, "raw": res}
 
 
-def generate_quote(opportunity_id: int, ctx: dict) -> dict:
+def generate_quote(
+    opportunity_id: int,
+    ctx: dict,
+    *,
+    on_project_id: Callable[[str], None] | None = None,
+) -> dict:
     opp = get_opportunity(opportunity_id)
     if not opp:
         raise ValueError(f"opp {opportunity_id} not found")
-    res = gsk_client.create_sheet(_quote_prompt(opp, ctx))
+    res = gsk_client.create_sheet(_quote_prompt(opp, ctx), on_project_id=on_project_id)
     project_id, share_url = _extract_artifact_urls(res)
     with conn() as c:
         cur = c.execute(

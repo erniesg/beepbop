@@ -1,22 +1,34 @@
 """Wrapper around the `gsk` (Genspark CLI) binary.
 
-All functions return parsed JSON from `gsk ... --output json`. Errors surface
-as `GskError` exceptions.
+Most functions shell out to gsk and return parsed JSON. The exception is
+``_create_task_streaming`` (used by ``create_slides`` / ``create_sheet`` when
+an ``on_project_id`` callback is supplied), which calls the gsk server API
+directly via httpx so we can surface the project_id mid-stream instead of
+waiting for the subprocess to finish 2-6 minutes later.
 
 gsk must be logged in (`gsk login`) or GSK_API_KEY must be set in env.
 """
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
+import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
+
+import httpx
 
 GSK_BIN_CANDIDATES = [
     shutil.which("gsk"),
     "/Users/erniesg/code/erniesg/node_modules/.bin/gsk",
 ]
+
+# Mirrors the CLI defaults (node_modules/@genspark/cli/dist/config.js + index.js)
+_GSK_DEFAULT_BASE_URL = "https://www.genspark.ai"
+_GSK_CONFIG_PATH = Path.home() / ".genspark-tool-cli" / "config.json"
+_GSK_STREAM_LOG = Path("/tmp/beepbop-gsk-stream.jsonl")
 
 
 class GskError(RuntimeError):
@@ -28,6 +40,132 @@ def _gsk_bin() -> str:
         if candidate and Path(candidate).exists():
             return candidate
     raise GskError("gsk binary not found (tried PATH and node_modules/.bin)")
+
+
+def _gsk_api_credentials() -> tuple[str, str]:
+    """Return (base_url, api_key). Mirrors the CLI's CLI-flag > env > file precedence."""
+    base_url = os.environ.get("GSK_BASE_URL") or _GSK_DEFAULT_BASE_URL
+    api_key = os.environ.get("GSK_API_KEY") or ""
+    if not api_key and _GSK_CONFIG_PATH.exists():
+        try:
+            cfg = json.loads(_GSK_CONFIG_PATH.read_text())
+            api_key = cfg.get("api_key") or ""
+            base_url = cfg.get("base_url") or base_url
+        except Exception as e:  # noqa: BLE001
+            raise GskError(f"failed to read {_GSK_CONFIG_PATH}: {e}") from e
+    if not api_key:
+        raise GskError("no gsk api key (set GSK_API_KEY or run `gsk login`)")
+    return base_url.rstrip("/"), api_key
+
+
+def _stream_log(record: dict) -> None:
+    """Append one NDJSON line to the stream log; never raise."""
+    try:
+        with _GSK_STREAM_LOG.open("a") as f:
+            f.write(json.dumps(record, default=str) + "\n")
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _extract_project_id(payload: Any) -> str:
+    """Walk the dict shallowly for the first project_id / task_id / job_id."""
+    if not isinstance(payload, dict):
+        return ""
+    for key in ("project_id", "task_id", "job_id"):
+        v = payload.get(key)
+        if isinstance(v, str) and v:
+            return v
+    data = payload.get("data")
+    if isinstance(data, dict):
+        for key in ("project_id", "task_id", "job_id"):
+            v = data.get(key)
+            if isinstance(v, str) and v:
+                return v
+    return ""
+
+
+def _create_task_streaming(
+    task_type: str,
+    task_name: str,
+    query: str,
+    instructions: str,
+    *,
+    on_project_id: Callable[[str], None] | None = None,
+    timeout: int = 600,
+) -> dict:
+    """Call POST /api/tool_cli/create_task and stream NDJSON line-by-line.
+
+    Mirrors the gsk CLI's request shape (see node_modules/@genspark/cli/dist/index.js
+    around line 553 + client.js line 86), but reads the stream incrementally so we
+    can fire ``on_project_id`` the moment the server emits the project_id (typically
+    10-30s into a slides job, vs the 2-6min the final response takes).
+
+    Raises GskError on HTTP failure or if no final result with status="ok" arrives.
+    Returns the final result dict (matches the shape of subprocess _run for create_task).
+    """
+    base_url, api_key = _gsk_api_credentials()
+    url = f"{base_url}/api/tool_cli/create_task"
+    body = {
+        "task_type": task_type,
+        "task_name": task_name[:60],
+        "query": query,
+        "instructions": instructions,
+    }
+    headers = {
+        "Content-Type": "application/json",
+        "X-Api-Key": api_key,
+        "Accept": "application/x-ndjson, application/json",
+    }
+
+    fired_pid = ""
+    final_result: dict | None = None
+    started = time.time()
+    _stream_log({"ts": started, "event": "request", "task_type": task_type, "task_name": task_name})
+
+    try:
+        with httpx.stream("POST", url, json=body, headers=headers, timeout=timeout) as resp:
+            if resp.status_code >= 400:
+                # Drain body for the error message before raising
+                err_body = b"".join(resp.iter_bytes()).decode("utf-8", errors="replace")
+                _stream_log({"ts": time.time(), "event": "http_error",
+                             "status": resp.status_code, "body": err_body[:500]})
+                raise GskError(f"gsk HTTP {resp.status_code}: {err_body[:300]}")
+
+            for raw in resp.iter_lines():
+                line = (raw or "").strip()
+                if not line or not line.startswith("{"):
+                    continue
+                try:
+                    msg = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                _stream_log({"ts": time.time(), "event": "line", "msg_keys": list(msg.keys())})
+
+                # Fire URL callback the first time we see a project_id anywhere
+                if on_project_id and not fired_pid:
+                    pid = _extract_project_id(msg)
+                    if pid:
+                        fired_pid = pid
+                        _stream_log({"ts": time.time(), "event": "project_id", "pid": pid,
+                                     "elapsed": round(time.time() - started, 1)})
+                        try:
+                            on_project_id(pid)
+                        except Exception as e:  # noqa: BLE001
+                            _stream_log({"ts": time.time(), "event": "callback_error", "err": str(e)})
+
+                # Final result has a "status" field
+                if msg.get("status"):
+                    final_result = msg
+    except httpx.HTTPError as e:
+        raise GskError(f"gsk stream HTTP error: {e}") from e
+
+    if not final_result:
+        raise GskError("gsk stream ended with no final status")
+    if final_result.get("status") == "error":
+        raise GskError(f"gsk task error: {final_result.get('message', '')}")
+    _stream_log({"ts": time.time(), "event": "done",
+                 "elapsed": round(time.time() - started, 1)})
+    return final_result
 
 
 def _run(args: list[str], timeout: int = 120) -> Any:
@@ -66,14 +204,25 @@ SHEETS_INSTRUCTIONS = (
 )
 
 
-def create_slides(prompt: str, task_name: str = "Pitch deck") -> dict:
-    """Kick a slide-generation task on Genspark. Returns task id / share URL (async).
+def create_slides(
+    prompt: str,
+    task_name: str = "Pitch deck",
+    *,
+    on_project_id: Callable[[str], None] | None = None,
+) -> dict:
+    """Kick a slide-generation task on Genspark.
 
-    CLI signature: gsk create_task slides --task_name <name> --query <prompt> --instructions <sys>
-    All three flags are runtime-required (help output only lists --task_name/--query; --instructions enforced at invocation).
+    When ``on_project_id`` is supplied we bypass the gsk subprocess and stream
+    the server's NDJSON response directly so we can surface the project_id
+    within ~30s instead of waiting for the full 2-6min slide build.
 
     Slide agent routinely takes 3-6 min — 10-min timeout keeps headroom over Genspark variance.
     """
+    if on_project_id is not None:
+        return _create_task_streaming(
+            "slides", task_name, prompt, SLIDES_INSTRUCTIONS,
+            on_project_id=on_project_id, timeout=600,
+        )
     return _run(
         ["create_task", "slides",
          "--task_name", task_name[:60],
@@ -83,11 +232,22 @@ def create_slides(prompt: str, task_name: str = "Pitch deck") -> dict:
     )
 
 
-def create_sheet(prompt: str, task_name: str = "Quotation") -> dict:
+def create_sheet(
+    prompt: str,
+    task_name: str = "Quotation",
+    *,
+    on_project_id: Callable[[str], None] | None = None,
+) -> dict:
     """Create a Google Sheets spreadsheet via create_task (agent-generated).
 
     Sheets agent is faster than slides — 5-min timeout is plenty.
+    Streams when ``on_project_id`` is supplied (see ``create_slides``).
     """
+    if on_project_id is not None:
+        return _create_task_streaming(
+            "sheets", task_name, prompt, SHEETS_INSTRUCTIONS,
+            on_project_id=on_project_id, timeout=300,
+        )
     return _run(
         ["create_task", "sheets",
          "--task_name", task_name[:60],

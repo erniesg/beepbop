@@ -790,6 +790,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
 
         async def _gen_with_heartbeat():
             import asyncio as _asyncio
+            import functools as _functools
             from app.outreach import generate_deck, generate_quote
             from app.telegram_bot import _html_escape as _he
             # Heartbeat loop — runs until cancelled
@@ -807,11 +808,30 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                         except Exception:
                             pass
             hb_task = _asyncio.create_task(_heartbeat())
+            # Fires from the worker thread the moment Genspark hands us a project_id.
+            # Surface the live Genspark URL to the user immediately — they can open
+            # it and watch the agent build the deck/quote in real time.
+            pid_seen: dict[str, str] = {}
+            def _on_project_id(pid: str) -> None:
+                if pid_seen.get("pid"):
+                    return
+                pid_seen["pid"] = pid
+                live_url = f"https://www.genspark.ai/agents?id={pid}"
+                label = "Deck" if kind == "deck" else "Quote"
+                try:
+                    send_text(
+                        chat_id,
+                        f"🔗 <b>{label} in progress</b>\n"
+                        f"<a href=\"{live_url}\">Open Genspark</a> to watch it build live.\n"
+                        f"<code>project_id: {_he(pid)}</code>",
+                    )
+                except Exception:
+                    pass
             try:
+                gen_fn = generate_deck if kind == "deck" else generate_quote
                 art = await _asyncio.to_thread(
-                    generate_deck if kind == "deck" else generate_quote,
-                    opp_id,
-                    _load_default_context(),
+                    _functools.partial(gen_fn, opp_id, _load_default_context(),
+                                       on_project_id=_on_project_id),
                 )
                 url = art.get("share_url") or ""
                 proj = art.get("project_id") or ""
