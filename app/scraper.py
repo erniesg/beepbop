@@ -94,22 +94,27 @@ async def run_scrape_job(
             except Exception:
                 pass
 
+        # Awarded amounts + suppliers are Singpass-gated, same as tender PDFs.
+        # So awarded_only opens the visible-browser login handoff just like docs mode.
+        needs_login = with_docs or awarded_only
+
         def _login_state(state: str) -> None:
+            after = "starting document download" if with_docs else "starting awarded-tender scrape"
             msg = {
                 "browser_open": "🪟 Chrome opened on your Mac. Log in with Singpass — I'll watch for the Logout link to appear and proceed automatically.",
-                "login_detected": "✅ Singpass login detected — starting keyword scrape + document download.",
-                "login_timeout": f"⏱ Login wait expired after {login_wait_seconds}s — proceeding without doc access.",
+                "login_detected": f"✅ Singpass login detected — {after}.",
+                "login_timeout": f"⏱ Login wait expired after {login_wait_seconds}s — proceeding without auth (amounts/docs may be blank).",
             }.get(state)
             if msg:
                 _notify_safe(msg)
 
-        # Timeout budget — docs mode needs login wait + download time, awarded
-        # mode needs to chew through ~40 closed-tab detail pages.
+        # Timeout budget — both docs and awarded modes need login wait time;
+        # awarded additionally chews through ~15 detail pages (~3s each).
         extra = 0
         if with_docs:
             extra = login_wait_seconds + 300
         elif awarded_only:
-            extra = 300  # ~3s/detail × 40 pages = 120s, plus tab-click + search
+            extra = login_wait_seconds + 300
         effective_timeout = settings.scrape_timeout_seconds + extra
 
         # For docs mode, use a persistent output dir so downloads survive past job end
@@ -128,10 +133,12 @@ async def run_scrape_job(
                     output_dir=output_dir,
                     max_total=effective_max,
                     profile_dir=str(profile_root) if profile_root else str(Path(output_dir) / "profile"),
-                    headless=not with_docs,
+                    # Visible browser whenever we need auth (docs OR awarded mode).
+                    headless=not needs_login,
+                    # Only download tender PDFs in docs mode — awarded mode just needs amounts.
                     skip_downloads=not with_docs,
-                    wait_for_login_seconds=login_wait_seconds if with_docs else 0,
-                    on_login_state=_login_state if with_docs else None,
+                    wait_for_login_seconds=login_wait_seconds if needs_login else 0,
+                    on_login_state=_login_state if needs_login else None,
                     awarded_only=awarded_only,
                 )
             return await asyncio.wait_for(asyncio.to_thread(_blocking), timeout=effective_timeout)

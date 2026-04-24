@@ -570,9 +570,9 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                         chat_id,
                         f"💰 <b>Scrape #{job_id} started (awarded/closed mode)</b>\n"
                         f"Keywords: <code>{_html_escape(' '.join(kws))}</code>\n"
-                        f"Pulling Closed-tab tenders, headless, reusing your saved Singpass session "
-                        f"(prices + suppliers are Singpass-gated). If amounts come back blank, "
-                        f"run <b>/scrape_docs</b> first to refresh the login. ETA 1–5 min."
+                        f"A Chrome window will pop up — <b>log in with Singpass</b>. Awarded amounts + "
+                        f"suppliers are Singpass-gated, so we need a fresh session. As soon as the "
+                        f"Logout link appears I'll start scraping the Closed tab. ETA 2–6 min."
                     )
                 else:
                     send_text(
