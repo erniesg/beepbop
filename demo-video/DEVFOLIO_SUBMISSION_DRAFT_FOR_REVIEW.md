@@ -1,6 +1,6 @@
 # Devfolio Submission Draft For Review
 
-Local review draft only. Do not update Devfolio until explicitly approved.
+Local review draft only. Do not update Devfolio until explicitly approved per call.
 
 ## Project Metadata
 
@@ -8,22 +8,22 @@ Local review draft only. Do not update Devfolio until explicitly approved.
 - Hackathon slug: `push-to-prod`
 - Project name: `beepbop`
 - Tagline: `AI bid ops for creators and SMEs`
-- Status to keep while editing: `draft`
+- Status while editing: `draft` (flip to `submitted` only on explicit user approval)
 - Deployed URL: `https://beepbop.berlayar.ai`
 - GitHub URL: `https://github.com/erniesg/beepbop`
 - Platforms: `Web`
 - Technologies: `Python`, `FastAPI`, `Claude`, `Genspark`, `HTMX`, `Playwright`, `Cloudflare`, `Telegram`
-- Demo video URL: `TBD after upload`
+- Demo video URL: `TBD after v3 upload` (local file: `renders/beepbop-submission-video-v3.mp4`)
 
-## Skills
+## Skill unlocked
 
 Securing lunch for every creator, every artist, every SME.
 
 ## The Problem Your Project Solves
 
-Artists need money. The State is the biggest buyer.
+**Artists need money. The State is the biggest buyer.**
 
-The problem is not that opportunities do not exist. The problem is that public-sector work is hidden behind a workflow that feels like death by tab-switching:
+The opportunity exists. Small creative teams lose it anyway, because public-sector procurement turns opportunity into death-by-tab-switching:
 
 - Monitor GeBIZ every day.
 - Guess which keywords matter.
@@ -35,86 +35,97 @@ The problem is not that opportunities do not exist. The problem is that public-s
 - Chase clarifications.
 - Book the follow-up.
 
-That is a real internal workflow problem for small creative teams. It is repetitive, manual, easy to forget, and expensive because every missed tender is lost revenue.
+That is real internal workflow pain: repetitive, manual, easy to forget, and expensive because every missed tender is lost revenue.
+
+Creators do not need to become procurement operators. They need the bid ops to happen around them.
 
 ## How You Are Solving It
 
-beepbop is a bot that helps creators, artists, and SMEs bid on opportunities from the biggest customer in Singapore: the state.
+beepbop is a Telegram-first bid-ops bot for creators, artists, and SMEs.
 
-It turns the GeBIZ bidding workflow into an AI-native approval loop:
+**You do not live in tabs.** Managed agents do.
 
-- It watches public GeBIZ listings.
-- Claude scores opportunities against the studio profile and explains the fit.
-- Claude extracts clarification questions and hidden compliance gates.
-- Genspark creates the pitch deck and quotation sheet.
+- The GeBIZ skill watches the market: public listings, awarded prices, supplier signals.
+- Claude scores fit against the studio profile and extracts hidden compliance gates.
+- Genspark generates the pitch deck and quote sheet.
 - Telegram asks the human before anything external is sent.
 - On approval, beepbop sends the email and can turn replies into meeting drafts.
 
-BeepBop is the bid-ops layer around a small team. Creators keep making, teaching, shooting, producing, and serving agencies. Managed agents handle monitoring, matching, compliance checks, decks, quotes, outreach, and handoffs. Telegram keeps the human at the decision points.
+The creator stays in control at decision points. The rest is scaffolding. Monitoring, matching, compliance extraction, artifact generation, outreach, and follow-up handoffs are all handled by managed agents so creators can focus on the work they love.
 
-Singapore and GeBIZ are the first wedge. Globally, the pattern is portable: portal adapters, local compliance skills, artifact agents, and approval loops. Swap the procurement portal and rules, and the same managed-agent loop helps creators and SMEs bid into public-sector demand anywhere.
+Singapore and GeBIZ are the first wedge. The pattern is portable: portal adapters, local compliance skills, artifact agents, and approval loops. Swap the procurement portal and the local rules, and the same managed-agent loop helps creators and SMEs bid into public-sector demand anywhere.
 
 ## Use Of Genspark
 
-Genspark handles the artifact and execution work that usually blocks small teams from bidding quickly:
+Genspark is the artifact and execution layer that usually blocks small teams from bidding quickly:
 
 - Pitch deck generation for a selected tender.
 - Quote sheet generation from the studio rate card.
 - Email and calendar execution through connected tools.
-- A shareable workspace link that can be opened straight from Telegram.
+- A shareable workspace link that opens straight from Telegram.
 
 The key use is not just content generation. It converts a tender into submission-ready business artifacts fast enough for a small operator to act while the opportunity is still fresh.
 
 ## Use Of Claude
 
-Claude acts as the reasoning layer:
+Claude is the reasoning layer:
 
-- Reads the creator/SME context as operating memory: services, rates, portfolio, and preferences.
+- Reads the creator/SME context as operating memory: services, rates, portfolio, preferences.
 - Decomposes a creative-studio profile into GeBIZ search terms.
-- Scores each opportunity against the user's context.
-- Produces match rationales.
-- Extracts clarification questions.
-- Infers Singapore-specific compliance gates such as MOE instructor requirements, police checks, insurance, and GeBIZ trading partner registration.
+- Scores each opportunity against the user's context and explains why.
+- Extracts clarification questions and hidden compliance gates (MOE instructor requirements, police checks, insurance, GeBIZ trading partner registration).
 - Drafts outreach and meeting follow-up decisions.
+- Keeps the human approval loop coherent across Telegram turns.
 
-Claude Code also helped produce the submission demo asset using the HyperFrames skill: a kinetic text-mask video over a real Esplanade/Singapore night image, with callouts layered over the Telegram walkthrough.
+**Claude Code reviewed and enhanced the final submission asset** (this demo video, the submission copy, and the final bid-ops narrative). The Esplanade/Singapore text-mask intro, walkthrough callouts, and closing line were authored with the HyperFrames skill and signed off via Claude Code.
 
-We also used a GeBIZ scraping/download workflow hardened around Singapore-specific portal behavior: Playwright search, contact scraping, downloaded attachments when Singpass permits, and guardrails around GeBIZ's multiple-window/session traps. For the demo, public listing mode is enough to show the bid loop; the Singpass document-download handoff is documented as the next production step.
+## GeBIZ Skill
+
+The project uses a GeBIZ-focused workflow for Singapore portal behaviour:
+
+- Public listing search and ranked retrieval.
+- Contact scraping for procurement officers and awarding ministries.
+- Awarded/closed opportunity mining for pricing signals.
+- A documented Singpass handoff path for protected tender documents (remote-browser QR scan, ~30s window).
+
+Guardrails handle GeBIZ's multi-window/session quirks so the scrape stays stable.
 
 ## Challenges
 
-- **Token pressure.** The build had to stay focused: enough context for Claude/Genspark to reason well, without turning every tender into a kitchen-sink prompt.
-- **GeBIZ + Singpass.** Tender document downloads hit Singpass QR login. For the demo, beepbop uses public GeBIZ listings and contact data, with a documented path to remote-browser Singpass handoff.
-- **GSK slide generation.** Two compounding bugs slowed the deck flow: the wrong streaming endpoint and orphaned jobs from restarting `uvicorn` mid-generation. The fix was switching from `/api/tool_cli/create_task` to `/api/tool_cli/agent_ask`, where `project_id` appears early in the stream; once we stopped killing in-flight jobs, the deck URL landed by DM in under 20 seconds.
-- **Scope pressure.** After two failed correction loops, the project narrowed to the strongest working path: monitor opportunities, score fit, generate artifacts, and keep the human approval loop.
+- **Token pressure.** The context had to stay sharp, not become a kitchen-sink prompt. Every tender ingest is opportunity, not a dumping ground.
+- **GeBIZ + Singpass.** Tender document downloads hit Singpass QR login. For the demo, beepbop uses public GeBIZ listings and contact data, with a documented remote-browser Singpass handoff path for production.
+- **GSK slide generation bug.** Two compounding bugs slowed the deck flow: the wrong streaming endpoint hid `project_id`, and restarting `uvicorn` orphaned in-flight deck jobs. Switching from `/api/tool_cli/create_task` to `/api/tool_cli/agent_ask` exposed `project_id` early in the stream; once we stopped killing mid-generation jobs, the deck URL landed by DM in under 20s.
+- **Kitchen-sink failure → fresh handoff.** After two failed correction loops, the project was drifting into kitchen-sink territory: stretchy scope, accreting prompts, a narrative pulling in every direction. We cut the session, snapshotted context into a fresh handoff, and brought in a clean agent pass to re-anchor on the strongest working loop: monitor opportunities, score fit, generate artifacts, keep the human in the approval seat. The narrow loop is what got shipped — and what the demo video shows.
+- **Scope pressure.** Hackathon time meant choosing: one tight bid-ops loop over Telegram, with real data and approval gates, versus a broader product surface. We chose the loop.
 
 ## Closing Line
 
-Skill unlocked: securing lunch for every creator, every artist, every SME, so small teams can scale into public-sector work.
+Securing lunch for every creator, every artist, every SME, so small teams can scale into public-sector work without living in tabs.
 
 ## Video Upload Plan
 
-Devfolio MCP expects `video_url`, not a video binary. The MP4 should be uploaded elsewhere first.
+Devfolio's `video_url` field expects a hosted URL, not a binary. Upload `renders/beepbop-submission-video-v3.mp4` to one of:
 
-Recommended options:
+- YouTube (unlisted) — best for judges, stable public URL.
+- Loom — good if combining with a longer narrated walkthrough.
+- Google Drive (public link) — verify in incognito before submitting.
+- Vimeo (unlisted) — cleanest playback.
 
-- Loom: best if you combine this 14s intro with a screen recording walkthrough.
-- YouTube unlisted: best stable public URL for judges.
-- Google Drive public link: fast, but verify permissions in an incognito window.
-- Vimeo unlisted: cleanest playback if available.
-
-After upload, the URL goes into Devfolio as `video_url`.
-
-The exact MCP update payload to review is in `DEVFOLIO_MCP_UPDATE_PAYLOAD_DRAFT.json`.
+Then paste that URL into the Devfolio field (or the MCP payload before firing).
 
 ## Current Local Video Files
 
-- Review render: `renders/beepbop-demo-trailer-review-v3.mp4`
-- Previous high-quality render: `renders/beepbop-demo-trailer-final.mp4`
+- Final v3 submission render: `renders/beepbop-submission-video-v3.mp4`
+- v2 archive: `renders/beepbop-submission-video-v2.mp4`
+- v3 intro standalone: `renders/beepbop-intro-v3.mp4`
+- Bot walkthrough overlaid v3: `renders/beepbop-bot-demo-overlaid-v3.mp4`
+- v3 contact sheet: `review-frames/contact-sheet-submission-v3.jpg`
 
-## Current Devfolio Draft Fixes To Apply Later
+## Pre-flight Check Before Firing updateHackathonProject MCP Call
 
-- Add missing deployed URL organizer field: `https://beepbop.berlayar.ai`
-- Replace wrong GitHub link with `https://github.com/erniesg/beepbop`
-- Add final hosted video URL
-- Keep status as `draft` until final approval
+- [ ] Hosted video URL is in hand and opens in an incognito window.
+- [ ] `DEVFOLIO_MCP_UPDATE_PAYLOAD_DRAFT.json` has been re-read end-to-end.
+- [ ] Desired `status` is confirmed (`draft` or `submitted`).
+- [ ] User gave fresh per-call approval (per saved `never auto-submit` rule).
+- [ ] GitHub link points to `https://github.com/erniesg/beepbop`.
+- [ ] Deployed URL resolves: `https://beepbop.berlayar.ai`.

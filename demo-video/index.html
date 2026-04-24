@@ -34,7 +34,6 @@
           radial-gradient(circle at 24% 36%, rgba(0, 229, 255, 0.2), transparent 34%),
           linear-gradient(180deg, #07101a 0%, #05070d 56%, #020307 100%);
         --grid-y: 0px;
-        --scan-x: -760px;
       }
 
       .layer {
@@ -139,7 +138,6 @@
       .caption,
       .micro,
       .url,
-      .screen-title,
       .pill {
         font-family: "Inter", "Helvetica Neue", Arial, sans-serif;
         letter-spacing: 0;
@@ -201,21 +199,8 @@
           drop-shadow(0 20px 46px rgba(0, 0, 0, 0.52));
       }
 
-      .brand-stroke {
-        fill: transparent;
-        stroke: rgba(245, 247, 251, 0.52);
-        stroke-width: 2px;
-      }
-
-      .brand-fill-text {
-        font-family: "Arial Black", "Montserrat", "Helvetica Neue", Arial, sans-serif;
-        font-size: 205px;
-        font-weight: 900;
-        letter-spacing: 0;
-      }
-
       .hero-sub {
-        max-width: 980px;
+        max-width: 1100px;
         color: rgba(245, 247, 251, 0.9);
         font-size: 38px;
         line-height: 1.08;
@@ -230,25 +215,25 @@
         z-index: 8;
         position: absolute;
         left: 150px;
-        top: 142px;
+        top: 168px;
         display: flex;
         flex-direction: column;
-        gap: 12px;
-        width: 1500px;
+        gap: 14px;
+        width: 1560px;
         pointer-events: none;
       }
 
       .kinetic-row {
         display: flex;
         align-items: baseline;
-        gap: 22px;
-        height: 104px;
+        gap: 24px;
+        height: 122px;
         overflow: hidden;
       }
 
       .big-word {
         font-family: "Arial Black", "Montserrat", "Helvetica Neue", Arial, sans-serif;
-        font-size: 86px;
+        font-size: 102px;
         line-height: 0.9;
         font-weight: 900;
         letter-spacing: 0;
@@ -270,310 +255,38 @@
       }
 
       .caption {
-        max-width: 1180px;
-        color: rgba(245, 247, 251, 0.74);
-        font-size: 32px;
-        line-height: 1.28;
-        font-weight: 650;
+        max-width: 1280px;
+        color: rgba(245, 247, 251, 0.76);
+        font-size: 34px;
+        line-height: 1.24;
+        font-weight: 680;
       }
 
-      .screen-rig {
-        z-index: 7;
+      .signoff-corner {
+        z-index: 19;
         position: absolute;
-        inset: 0;
-        pointer-events: none;
-      }
-
-      .screen-title {
-        position: absolute;
-        left: 148px;
-        top: 86px;
-        font-size: 28px;
-        font-weight: 800;
-        color: rgba(245, 247, 251, 0.8);
-      }
-
-      .screen-stage {
-        position: absolute;
-        left: 126px;
-        top: 168px;
-        width: 1142px;
-        height: 724px;
-        border: 1px solid rgba(0, 229, 255, 0.28);
-        border-radius: 22px;
-        overflow: hidden;
-        background: #f8fafc;
-        box-shadow:
-          0 44px 110px rgba(0, 0, 0, 0.55),
-          0 0 90px rgba(0, 229, 255, 0.14);
-      }
-
-      .screenshot {
-        position: absolute;
-        inset: 0;
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-        object-position: top center;
-      }
-
-      .dash-shot {
-        height: 1560px;
-      }
-
-      .opp-shot {
-        object-fit: cover;
-      }
-
-      .screen-scrim {
-        position: absolute;
-        inset: 0;
-        background:
-          linear-gradient(90deg, rgba(5, 7, 13, 0.15), transparent 30%, rgba(5, 7, 13, 0.2)),
-          linear-gradient(180deg, transparent 0%, transparent 64%, rgba(5, 7, 13, 0.34) 100%);
-      }
-
-      .scan-line {
-        position: absolute;
-        top: 0;
-        bottom: 0;
-        left: 0;
-        width: 190px;
-        transform: translate3d(var(--scan-x), 0, 0) skewX(-12deg);
-        background: linear-gradient(90deg, transparent, rgba(0, 229, 255, 0.34), rgba(245, 247, 251, 0.38), transparent);
-        mix-blend-mode: screen;
-      }
-
-      .metric-column {
-        position: absolute;
-        right: 130px;
-        top: 166px;
-        display: flex;
-        flex-direction: column;
-        gap: 22px;
-        width: 430px;
-      }
-
-      .metric {
-        position: relative;
-        min-height: 148px;
-        padding: 26px 28px;
-        border: 1px solid rgba(245, 247, 251, 0.16);
-        border-radius: 18px;
-        background: rgba(7, 16, 26, 0.78);
-        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.34);
-        overflow: hidden;
-      }
-
-      .metric::after {
-        content: "";
-        position: absolute;
-        inset: 0;
-        background: linear-gradient(90deg, rgba(0, 229, 255, 0.14), transparent);
-        opacity: 0.7;
-        pointer-events: none;
-      }
-
-      .metric-number {
-        position: relative;
-        z-index: 1;
-        font-family: "Arial Black", "Montserrat", "Helvetica Neue", Arial, sans-serif;
-        font-size: 72px;
-        line-height: 0.88;
-        font-weight: 900;
-        color: #f5f7fb;
-      }
-
-      .metric-label {
-        position: relative;
-        z-index: 1;
-        margin-top: 13px;
-        color: rgba(245, 247, 251, 0.72);
-        font-size: 22px;
-        line-height: 1.17;
-        font-weight: 700;
-      }
-
-      .pipeline {
-        z-index: 9;
-        position: absolute;
-        inset: 0;
-        pointer-events: none;
-      }
-
-      .pipeline-title {
-        position: absolute;
-        left: 150px;
-        top: 96px;
-        width: 760px;
-        font-family: "Arial Black", "Montserrat", "Helvetica Neue", Arial, sans-serif;
-        font-size: 96px;
-        line-height: 0.95;
-        font-weight: 900;
-        color: #f5f7fb;
-      }
-
-      .pipeline-title span {
-        display: block;
-        color: #ffb000;
-      }
-
-      .rail {
-        position: absolute;
-        left: 164px;
-        right: 164px;
-        top: 540px;
-        height: 4px;
-        background: linear-gradient(90deg, #00e5ff, #ffb000, #3dff99);
-        box-shadow: 0 0 46px rgba(0, 229, 255, 0.55);
-        transform-origin: left center;
-      }
-
-      .step {
-        position: absolute;
-        top: 454px;
-        width: 274px;
-        min-height: 172px;
-        padding: 24px 24px 22px;
-        border: 1px solid rgba(245, 247, 251, 0.17);
-        border-radius: 20px;
-        background: rgba(5, 7, 13, 0.84);
-        box-shadow: 0 28px 80px rgba(0, 0, 0, 0.42);
-      }
-
-      .step:nth-child(3) {
-        left: 176px;
-      }
-
-      .step:nth-child(4) {
-        left: 486px;
-      }
-
-      .step:nth-child(5) {
-        left: 796px;
-      }
-
-      .step:nth-child(6) {
-        left: 1106px;
-      }
-
-      .step:nth-child(7) {
-        left: 1416px;
-      }
-
-      .step-key {
-        font-family: "Arial Black", "Montserrat", "Helvetica Neue", Arial, sans-serif;
-        font-size: 42px;
-        line-height: 0.92;
-        color: #f5f7fb;
-      }
-
-      .step-copy {
-        margin-top: 16px;
-        color: rgba(245, 247, 251, 0.66);
-        font-size: 20px;
-        line-height: 1.18;
-        font-weight: 700;
-      }
-
-      .approval {
-        position: absolute;
-        right: 156px;
-        top: 154px;
-        width: 472px;
-        padding: 28px;
-        border: 1px solid rgba(61, 255, 153, 0.34);
-        border-radius: 24px;
-        background: rgba(5, 18, 15, 0.86);
-        box-shadow:
-          0 32px 90px rgba(0, 0, 0, 0.48),
-          0 0 80px rgba(61, 255, 153, 0.16);
-      }
-
-      .approval-top {
-        display: flex;
-        justify-content: space-between;
-        color: rgba(245, 247, 251, 0.68);
-        font-size: 18px;
-        font-weight: 760;
-      }
-
-      .approval-main {
-        margin-top: 22px;
-        color: #f5f7fb;
-        font-size: 35px;
-        line-height: 1.04;
-        font-weight: 850;
-      }
-
-      .approval-buttons {
-        display: flex;
-        gap: 12px;
-        margin-top: 22px;
-      }
-
-      .approval-buttons span {
-        display: flex;
+        right: 36px;
+        bottom: 36px;
+        display: inline-flex;
         align-items: center;
-        justify-content: center;
-        min-width: 104px;
-        height: 48px;
+        gap: 10px;
+        padding: 8px 14px;
+        border: 1px solid rgba(0, 229, 255, 0.3);
         border-radius: 999px;
-        color: #05120f;
-        background: #3dff99;
-        font-weight: 900;
+        background: rgba(7, 16, 26, 0.68);
+        color: rgba(245, 247, 251, 0.82);
         font-size: 18px;
-      }
-
-      .approval-buttons span + span {
-        color: rgba(245, 247, 251, 0.76);
-        background: rgba(245, 247, 251, 0.1);
-      }
-
-      .finale {
-        z-index: 11;
-        position: absolute;
-        inset: 0;
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        padding: 118px 150px;
-        pointer-events: none;
-      }
-
-      .final-title {
-        max-width: 1300px;
-        font-family: "Arial Black", "Montserrat", "Helvetica Neue", Arial, sans-serif;
-        font-size: 112px;
-        line-height: 0.95;
-        letter-spacing: 0;
-        font-weight: 900;
-        color: #f5f7fb;
-      }
-
-      .final-title span {
-        color: #00e5ff;
-      }
-
-      .final-copy {
-        margin-top: 34px;
-        max-width: 1040px;
-        color: rgba(245, 247, 251, 0.76);
-        font-size: 37px;
-        line-height: 1.16;
         font-weight: 720;
+        backdrop-filter: blur(4px);
       }
 
-      .url {
-        margin-top: 46px;
-        width: fit-content;
-        padding: 16px 24px;
-        border: 1px solid rgba(0, 229, 255, 0.34);
+      .signoff-corner::before {
+        content: "";
+        width: 8px;
+        height: 8px;
         border-radius: 999px;
-        color: #f5f7fb;
-        background: rgba(0, 229, 255, 0.1);
-        font-size: 24px;
-        font-weight: 800;
+        background: #3dff99;
+        box-shadow: 0 0 10px rgba(61, 255, 153, 0.9);
       }
 
       .flash {
@@ -619,7 +332,7 @@
       id="root"
       data-composition-id="main"
       data-start="0"
-      data-duration="14"
+      data-duration="10"
       data-width="1920"
       data-height="1080"
     >
@@ -672,9 +385,9 @@
         <div class="hero-photo-bg"></div>
         <div class="hero-photo-grade"></div>
         <div class="eyebrow">PUSH TO PROD // SINGAPORE</div>
-        <div class="credit">Claude Code made this video for me</div>
+        <div class="credit">Reviewed &amp; enhanced with Claude Code</div>
         <div class="brand-svg mark-mask"></div>
-        <div class="hero-sub">A bot that bids on public-sector work for <span>creators, artists, and SMEs.</span></div>
+        <div class="hero-sub">Telegram-first bid ops for <span>creators, artists, and SMEs.</span></div>
       </section>
 
       <section class="problem-line">
@@ -684,86 +397,20 @@
         </div>
         <div class="kinetic-row">
           <div class="big-word problem-word accent-amber">The State</div>
-          <div class="big-word problem-word">is</div>
+          <div class="big-word problem-word">is the</div>
         </div>
         <div class="kinetic-row">
-          <div class="big-word problem-word">the biggest buyer.</div>
+          <div class="big-word problem-word">biggest buyer.</div>
         </div>
-        <p class="caption problem-caption">But GeBIZ turns opportunity into tab-switching admin: monitor, shortlist, read, quote, chase, repeat.</p>
+        <p class="caption problem-caption">But public-sector procurement turns opportunity into death-by-tab-switching.</p>
       </section>
 
-      <section class="screen-rig">
-        <div class="screen-title">FROM TAB-SWITCHING TO APPROVAL LOOP</div>
-        <div class="screen-stage">
-          <img class="screenshot dash-shot" src="./assets/dashboard.png" alt="" />
-          <img class="screenshot opp-shot" src="./assets/opportunity.png" alt="" />
-          <div class="screen-scrim"></div>
-          <div class="scan-line"></div>
-        </div>
-        <div class="metric-column">
-          <div class="metric">
-            <div class="metric-number">42</div>
-            <div class="metric-label">real public-sector opportunities watched</div>
-          </div>
-          <div class="metric">
-            <div class="metric-number accent-cyan">0.82</div>
-            <div class="metric-label">creative-studio fit scored by Claude</div>
-          </div>
-          <div class="metric">
-            <div class="metric-number accent-amber">5</div>
-            <div class="metric-label">hidden prereqs found before bidding</div>
-          </div>
-        </div>
-      </section>
-
-      <section class="pipeline">
-        <div class="pipeline-title">A bot that bids.<span>You stay in control.</span></div>
-        <div class="rail"></div>
-        <div class="step">
-          <div class="step-key accent-cyan">WATCH</div>
-          <div class="step-copy">GeBIZ listings and contacts</div>
-        </div>
-        <div class="step">
-          <div class="step-key">MATCH</div>
-          <div class="step-copy">Claude scoring and compliance</div>
-        </div>
-        <div class="step">
-          <div class="step-key accent-amber">MAKE</div>
-          <div class="step-copy">Genspark deck and quote</div>
-        </div>
-        <div class="step">
-          <div class="step-key accent-green">APPROVE</div>
-          <div class="step-copy">Telegram yes, edit, or no</div>
-        </div>
-        <div class="step">
-          <div class="step-key">SEND</div>
-          <div class="step-copy">email follow-up and meetings</div>
-        </div>
-        <div class="approval">
-          <div class="approval-top">
-            <span>@beepbopsg_bot</span>
-            <span>now</span>
-          </div>
-          <div class="approval-main">Send this public-sector pitch?</div>
-          <div class="approval-buttons">
-            <span>YES</span>
-            <span>EDIT</span>
-            <span>NO</span>
-          </div>
-        </div>
-      </section>
-
-      <section class="finale">
-        <div class="final-title">Skill unlocked:<br /><span>securing lunch.</span></div>
-        <div class="final-copy">For every creator, every artist, every SME: focus on the work you love while managed agents scale the bid ops.</div>
-        <div class="url">beepbop.berlayar.ai</div>
-      </section>
-
+      <div class="signoff-corner">Reviewed by Claude Code</div>
       <div class="layer flash"></div>
       <div class="layer noise"></div>
       <div class="layer vignette"></div>
       <div class="layer letterbox"></div>
-      <div class="accessibility">beepbop demo trailer for the Push to Prod Hackathon</div>
+      <div class="accessibility">beepbop demo trailer intro — Push to Prod Hackathon with Genspark &amp; Claude</div>
     </div>
 
     <script>
@@ -772,64 +419,33 @@
       const tl = gsap.timeline({ paused: true });
       const root = document.querySelector("[data-composition-id='main']");
 
-      gsap.set(".problem-line, .screen-rig, .pipeline, .finale", { opacity: 0 });
-      gsap.set(".opp-shot", { opacity: 0, scale: 1.02 });
-      gsap.set(".screen-stage", { rotateX: 0, rotateY: 0, transformPerspective: 1200 });
-      gsap.set(".metric, .step, .approval", { opacity: 0 });
-      gsap.set(".rail", { scaleX: 0 });
-      gsap.set(".final-title, .final-copy, .url", { opacity: 0 });
+      gsap.set(".problem-line", { opacity: 0 });
+      gsap.set(".signoff-corner", { opacity: 0, y: 12 });
 
       tl.from(".skyline", { y: 76, opacity: 0, duration: 0.9, ease: "power3.out" }, 0);
       tl.from(".eyebrow", { y: 34, opacity: 0, duration: 0.48, ease: "power3.out" }, 0.12);
       tl.from(".credit", { y: 28, opacity: 0, scale: 0.94, duration: 0.42, ease: "power3.out" }, 0.24);
       tl.from(".brand-svg", { y: 68, opacity: 0, scale: 0.94, filter: "blur(16px)", duration: 0.78, ease: "power4.out" }, 0.32);
       tl.from(".hero-sub", { y: 36, opacity: 0, filter: "blur(10px)", duration: 0.56, ease: "power3.out" }, 0.74);
-      tl.to(root, { "--grid-y": "34px", duration: 13.6, ease: "none" }, 0);
-      tl.to(".skyline svg", { x: 28, duration: 13.6, ease: "none" }, 0);
-      tl.to(".brand-svg", { x: 20, duration: 1.5, ease: "sine.inOut" }, 0.76);
-      tl.to(".hero", { y: -42, opacity: 0, filter: "blur(12px)", duration: 0.5, ease: "power2.in" }, 2.15);
-      tl.to(".flash", { opacity: 0.72, duration: 0.08, ease: "none" }, 2.55);
-      tl.to(".flash", { opacity: 0, duration: 0.2, ease: "power2.out" }, 2.63);
+      tl.to(root, { "--grid-y": "30px", duration: 9.6, ease: "none" }, 0);
+      tl.to(".skyline svg", { x: 24, duration: 9.6, ease: "none" }, 0);
+      tl.to(".brand-svg", { x: 18, duration: 1.6, ease: "sine.inOut" }, 0.76);
+      tl.to(".hero", { y: -42, opacity: 0, filter: "blur(12px)", duration: 0.5, ease: "power2.in" }, 2.55);
+      tl.to(".flash", { opacity: 0.72, duration: 0.08, ease: "none" }, 2.95);
+      tl.to(".flash", { opacity: 0, duration: 0.2, ease: "power2.out" }, 3.03);
 
-      tl.to(".problem-line", { opacity: 1, duration: 0.01 }, 2.42);
-      tl.from(".problem-word", { yPercent: 120, opacity: 0, stagger: 0.08, duration: 0.46, ease: "power4.out" }, 2.5);
-      tl.from(".problem-caption", { y: 32, opacity: 0, filter: "blur(8px)", duration: 0.45, ease: "power3.out" }, 3.12);
-      tl.to(".problem-word", { yPercent: -110, opacity: 0, stagger: 0.05, duration: 0.38, ease: "power3.in" }, 4.28);
-      tl.to(".problem-caption", { y: -24, opacity: 0, filter: "blur(8px)", duration: 0.34, ease: "power2.in" }, 4.42);
-      tl.to(".problem-line", { opacity: 0, duration: 0.01 }, 4.86);
+      tl.to(".problem-line", { opacity: 1, duration: 0.01 }, 2.8);
+      tl.from(".problem-word", { yPercent: 120, opacity: 0, stagger: 0.09, duration: 0.5, ease: "power4.out" }, 2.9);
+      tl.from(".problem-caption", { y: 32, opacity: 0, filter: "blur(8px)", duration: 0.5, ease: "power3.out" }, 4.2);
 
-      tl.to(".screen-rig", { opacity: 1, duration: 0.01 }, 4.55);
-      tl.from(".screen-title", { y: 20, opacity: 0, duration: 0.34, ease: "power3.out" }, 4.62);
-      tl.from(".screen-stage", { x: -108, y: 54, opacity: 0, scale: 0.92, filter: "blur(12px)", duration: 0.66, ease: "power4.out" }, 4.7);
-      tl.from(".dash-shot", { y: 0, duration: 0.01 }, 4.7);
-      tl.to(".dash-shot", { y: -586, duration: 2.7, ease: "power1.inOut" }, 5.0);
-      tl.to(root, { "--scan-x": "1260px", duration: 0.84, ease: "power2.inOut", repeat: 3, repeatDelay: 0.18 }, 5.0);
-      tl.fromTo(".metric", { x: 86, opacity: 0, scale: 0.92 }, { x: 0, opacity: 1, scale: 1, stagger: 0.17, duration: 0.48, ease: "back.out(1.3)" }, 5.25);
-      tl.to(".dash-shot", { opacity: 0, scale: 1.02, duration: 0.28, ease: "power2.inOut" }, 7.28);
-      tl.to(".opp-shot", { opacity: 1, scale: 1, duration: 0.34, ease: "power2.inOut" }, 7.3);
-      tl.to(".screen-stage", { x: -22, y: -12, scale: 1.02, duration: 0.62, ease: "power2.out" }, 7.28);
-      tl.to(".metric", { x: 72, opacity: 0, stagger: 0.05, duration: 0.34, ease: "power2.in" }, 7.78);
-      tl.to(".screen-rig", { y: -44, opacity: 0, filter: "blur(12px)", duration: 0.44, ease: "power2.in" }, 8.02);
-      tl.to(".screen-rig", { opacity: 0, duration: 0.01 }, 8.5);
+      tl.to(".signoff-corner", { opacity: 1, y: 0, duration: 0.5, ease: "power3.out" }, 5.2);
 
-      tl.to(".pipeline", { opacity: 1, duration: 0.01 }, 8.42);
-      tl.from(".pipeline-title", { x: -82, opacity: 0, filter: "blur(10px)", duration: 0.48, ease: "power4.out" }, 8.55);
-      tl.to(".rail", { scaleX: 1, duration: 0.64, ease: "power3.out" }, 8.92);
-      tl.fromTo(".step", { y: 84, opacity: 0, scale: 0.88 }, { y: 0, opacity: 1, scale: 1, stagger: 0.1, duration: 0.38, ease: "back.out(1.35)" }, 8.98);
-      tl.fromTo(".approval", { x: 92, y: -28, opacity: 0, scale: 0.9 }, { x: 0, y: 0, opacity: 1, scale: 1, duration: 0.44, ease: "back.out(1.4)" }, 9.78);
-      tl.from(".approval-buttons span", { y: 22, opacity: 0, stagger: 0.05, duration: 0.24, ease: "power3.out" }, 10.1);
-      tl.to(".approval-buttons span:first-child", { scale: 1.09, boxShadow: "0 0 34px rgba(61,255,153,0.7)", duration: 0.18, ease: "power2.out" }, 10.55);
-      tl.to(".approval-buttons span:first-child", { scale: 1, boxShadow: "0 0 0 rgba(61,255,153,0)", duration: 0.18, ease: "power2.in" }, 10.76);
-      tl.to(".pipeline", { y: -52, opacity: 0, filter: "blur(12px)", duration: 0.46, ease: "power2.in" }, 11.08);
-      tl.to(".pipeline", { opacity: 0, duration: 0.01 }, 11.56);
-
-      tl.to(".finale", { opacity: 1, duration: 0.01 }, 11.24);
-      tl.fromTo(".final-title", { y: 72, opacity: 0, filter: "blur(16px)" }, { y: 0, opacity: 1, filter: "blur(0px)", duration: 0.62, ease: "power4.out" }, 11.38);
-      tl.fromTo(".final-copy", { y: 42, opacity: 0, filter: "blur(10px)" }, { y: 0, opacity: 1, filter: "blur(0px)", duration: 0.5, ease: "power3.out" }, 11.88);
-      tl.fromTo(".url", { y: 24, opacity: 0, scale: 0.94 }, { y: 0, opacity: 1, scale: 1, duration: 0.38, ease: "back.out(1.35)" }, 12.34);
-      tl.to(".final-title span", { color: "#3DFF99", duration: 0.26, ease: "power1.inOut" }, 12.86);
-      tl.to(".flash", { opacity: 0.45, duration: 0.07, ease: "none" }, 13.22);
-      tl.to(".flash", { opacity: 0, duration: 0.24, ease: "power2.out" }, 13.29);
+      tl.to(".problem-word", { yPercent: -110, opacity: 0, stagger: 0.05, duration: 0.4, ease: "power3.in" }, 8.0);
+      tl.to(".problem-caption", { y: -24, opacity: 0, filter: "blur(8px)", duration: 0.36, ease: "power2.in" }, 8.16);
+      tl.to(".problem-line", { opacity: 0, duration: 0.01 }, 8.7);
+      tl.to(".signoff-corner", { opacity: 0, y: -6, duration: 0.35, ease: "power2.in" }, 8.8);
+      tl.to(".flash", { opacity: 0.9, duration: 0.14, ease: "none" }, 9.3);
+      tl.to(".flash", { opacity: 0, duration: 0.2, ease: "power2.out" }, 9.44);
 
       window.__timelines["main"] = tl;
     </script>
