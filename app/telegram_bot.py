@@ -27,16 +27,19 @@ def _api_url(path: str) -> str:
     return f"{TG_API}/bot{token}/{path}"
 
 
-def send_text(chat_id: str | None, text: str) -> dict:
+def send_text(chat_id: str | None, text: str, parse_mode: str | None = "Markdown") -> dict:
     from app.app_settings import telegram_chat_id as _tg_chat
     chat_id = chat_id or _tg_chat()
     if not chat_id:
         raise RuntimeError("no chat_id available (set TELEGRAM_CHAT_ID)")
-    r = httpx.post(
-        _api_url("sendMessage"),
-        json={"chat_id": chat_id, "text": text, "parse_mode": "Markdown"},
-        timeout=15,
-    )
+    payload = {"chat_id": chat_id, "text": text[:4000]}
+    if parse_mode:
+        payload["parse_mode"] = parse_mode
+    r = httpx.post(_api_url("sendMessage"), json=payload, timeout=15)
+    if r.status_code == 400 and parse_mode:
+        # Markdown parse error — retry as plain text
+        payload.pop("parse_mode", None)
+        r = httpx.post(_api_url("sendMessage"), json=payload, timeout=15)
     r.raise_for_status()
     return r.json()
 
