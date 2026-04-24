@@ -60,8 +60,11 @@ Differentiator vs naive "AI for tenders": the **compliance agent** infers unstat
 
 ## Hard user preferences (live memory these conversations generated)
 
-- Never auto-submit to external platforms (Devfolio, real email, phone) without fresh per-call approval. Drafts count as submissions. See `~/.claude/projects/-Users-erniesg-code-erniesg/memory/feedback_never_auto_submit.md`.
-- Don't echo leaked secrets back in plaintext responses; flag + remind rotation. Multiple leaks this session: Anthropic key, Devfolio MCP key, Claw remote-desktop password, Telegram bot token. See `memory/feedback_redact_leaked_secrets.md`.
+Memory lives at `~/.claude/projects/-Users-erniesg-code-erniesg-beepbop/memory/` — read `MEMORY.md` there first.
+
+- Never auto-submit to external platforms (Devfolio, real email, phone) without fresh per-call approval. Drafts count as submissions. See `feedback_never_auto_submit.md`.
+- Don't echo leaked secrets back in plaintext responses; flag + remind rotation. Multiple leaks this session: Anthropic key, Devfolio MCP key, Claw remote-desktop password, Telegram bot token. See `feedback_redact_leaked_secrets.md`.
+- Commit per meaningful change, validate by actually running (not just code-reading). See `feedback_commit_and_validate.md`.
 - User is female (she/her). If you ever saw me suggest "they/them" in examples, those were hypothetical; no assumption was made.
 
 ## File tour (you only need these)
