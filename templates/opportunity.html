@@ -91,6 +91,28 @@
 </div>
 
 <div class="mt-8 pt-6 border-t border-slate-100">
+  <h3 class="font-semibold text-sm text-slate-900 mb-3">Tender documents <span class="text-xs font-normal text-slate-400 ml-1">from GeBIZ listing</span></h3>
+  {% if documents %}
+  <ul class="text-sm space-y-1 mb-2">
+    {% for d in documents %}
+    <li class="flex items-start gap-2">
+      <span class="text-slate-400 mt-0.5">📄</span>
+      <span class="text-slate-700">{{ d.text }}</span>
+      {% if not d.downloadable or d.downloadable == 'false' %}
+      <span class="text-xs text-amber-600 ml-1">Singpass-gated</span>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  <p class="text-xs text-slate-500">Download requires Singpass.
+    {% if opp.detail_url %}<a href="{{ opp.detail_url }}" target="_blank" rel="noopener" class="underline">Open on GeBIZ ↗</a> to log in + download.{% endif %}
+  </p>
+  {% else %}
+  <p class="text-sm text-slate-400 italic">No documents listed on the GeBIZ page.</p>
+  {% endif %}
+</div>
+
+<div class="mt-8 pt-6 border-t border-slate-100">
   <h3 class="font-semibold text-sm text-slate-900 mb-3">Timeline</h3>
   {% if timeline %}
   <ol class="space-y-2 text-sm">

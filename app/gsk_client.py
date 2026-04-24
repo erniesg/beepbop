@@ -71,18 +71,23 @@ def create_slides(prompt: str, task_name: str = "Pitch deck") -> dict:
 
     CLI signature: gsk create_task slides --task_name <name> --query <prompt> --instructions <sys>
     All three flags are runtime-required (help output only lists --task_name/--query; --instructions enforced at invocation).
+
+    Slide agent routinely takes 3-6 min — 10-min timeout keeps headroom over Genspark variance.
     """
     return _run(
         ["create_task", "slides",
          "--task_name", task_name[:60],
          "--query", prompt,
          "--instructions", SLIDES_INSTRUCTIONS],
-        timeout=300,
+        timeout=600,
     )
 
 
 def create_sheet(prompt: str, task_name: str = "Quotation") -> dict:
-    """Create a Google Sheets spreadsheet via create_task (agent-generated)."""
+    """Create a Google Sheets spreadsheet via create_task (agent-generated).
+
+    Sheets agent is faster than slides — 5-min timeout is plenty.
+    """
     return _run(
         ["create_task", "sheets",
          "--task_name", task_name[:60],

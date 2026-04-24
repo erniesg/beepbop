@@ -157,6 +157,21 @@ def send_opportunity_card(chat_id: str | int, opp: dict) -> dict:
     detail_url = opp.get("detail_url") or ""
     if detail_url:
         text += f"\n<a href=\"{detail_url}\">Open on GeBIZ ↗</a>"
+    # Surface doc filenames if the scraper captured them
+    import json as _j
+    try:
+        raw = _j.loads(opp.get("raw_json") or "{}")
+        docs = raw.get("documents") or []
+    except Exception:
+        docs = []
+    if docs:
+        text += f"\n\n<b>Docs ({len(docs)}):</b>"
+        for d in docs[:3]:
+            name = _html_escape((d.get("text") or "")[:70])
+            text += f"\n  📄 {name}"
+        if len(docs) > 3:
+            text += f"\n  <i>+{len(docs)-3} more</i>"
+        text += "\n<i>Singpass-gated — log in on GeBIZ to download.</i>"
     if opp.get("match_rationale"):
         text += f"\n\n<i>{_html_escape(opp['match_rationale'][:300])}</i>"
 

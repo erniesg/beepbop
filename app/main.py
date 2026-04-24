@@ -207,10 +207,18 @@ def opportunity_detail(request: Request, opp_id: int) -> HTMLResponse:
     if not opp:
         return HTMLResponse("<h1>Not found</h1>", status_code=404)
     timeline = list_outreach(opp_id)
+    # Extract document filenames from raw_json (captured by scraper, even without download)
+    import json as _j
+    docs = []
+    try:
+        raw = _j.loads(opp.get("raw_json") or "{}")
+        docs = raw.get("documents") or []
+    except Exception:
+        docs = []
     return templates.TemplateResponse(
         request,
         "opportunity.html",
-        {"user": user, "opp": opp, "timeline": timeline},
+        {"user": user, "opp": opp, "timeline": timeline, "documents": docs},
     )
 
 
