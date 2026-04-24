@@ -51,9 +51,13 @@ def me() -> dict:
 
 
 def create_slides(prompt: str, task_name: str = "Pitch deck") -> dict:
-    """Kick a slide-generation task on Genspark. Returns task id / share URL (async)."""
+    """Kick a slide-generation task on Genspark. Returns task id / share URL (async).
+
+    CLI signature confirmed via `gsk help create_task`:
+      gsk create_task slides --task_name <name> --query <prompt>
+    """
     return _run(
-        ["create_task", "slides", "--task_name", task_name[:60], "--task", prompt],
+        ["create_task", "slides", "--task_name", task_name[:60], "--query", prompt],
         timeout=300,
     )
 
@@ -61,7 +65,7 @@ def create_slides(prompt: str, task_name: str = "Pitch deck") -> dict:
 def create_sheet(prompt: str, task_name: str = "Quotation") -> dict:
     """Create a Google Sheets spreadsheet via create_task (agent-generated)."""
     return _run(
-        ["create_task", "sheets", "--task_name", task_name[:60], "--task", prompt],
+        ["create_task", "sheets", "--task_name", task_name[:60], "--query", prompt],
         timeout=300,
     )
 
