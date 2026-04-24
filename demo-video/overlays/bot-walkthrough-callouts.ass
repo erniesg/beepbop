@@ -1,0 +1,33 @@
+[Script Info]
+Title: BeepBop walkthrough callouts v3
+ScriptType: v4.00+
+PlayResX: 1920
+PlayResY: 1080
+WrapStyle: 0
+ScaledBorderAndShadow: yes
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Callout,Arial,46,&H00F5F7FB,&H0000E5FF,&HAA061019,&HCC061019,-1,0,0,0,100,100,0,0,4,2,0,7,1160,80,110,1
+Style: Small,Arial,28,&H00BDEFF7,&H0000E5FF,&HAA061019,&HAA061019,-1,0,0,0,100,100,0,0,4,1,0,7,1160,80,200,1
+Style: Bottom,Arial,36,&H00F5F7FB,&H0000E5FF,&HAA061019,&HCC061019,-1,0,0,0,100,100,0,0,4,2,0,2,120,120,72,1
+Style: Signoff,Arial,22,&H00BDEFF7,&H0000E5FF,&HAA061019,&HAA061019,-1,0,0,0,100,100,0,0,4,1,0,9,40,40,40,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:00.00,0:00:06.00,Callout,,0,0,0,,You do not live in tabs
+Dialogue: 0,0:00:00.00,0:00:06.00,Small,,0,0,0,,Telegram-first bid ops — no dashboard babysitting
+Dialogue: 0,0:00:06.00,0:00:12.00,Callout,,0,0,0,,GeBIZ skill watches the market
+Dialogue: 0,0:00:06.00,0:00:12.00,Small,,0,0,0,,Public listings, awarded prices, supplier signals
+Dialogue: 0,0:00:12.00,0:00:18.50,Callout,,0,0,0,,Claude scores fit + hidden compliance
+Dialogue: 0,0:00:12.00,0:00:18.50,Small,,0,0,0,,Context memory, fit scoring, clarification questions
+Dialogue: 0,0:00:18.50,0:00:25.00,Callout,,0,0,0,,Genspark generates deck + quote
+Dialogue: 0,0:00:18.50,0:00:25.00,Small,,0,0,0,,Submission-ready artifacts from one tender
+Dialogue: 0,0:00:25.00,0:00:31.00,Callout,,0,0,0,,Human approves before anything is sent
+Dialogue: 0,0:00:25.00,0:00:31.00,Small,,0,0,0,,Yes, edit, or no — on your phone
+Dialogue: 0,0:00:31.00,0:00:37.50,Callout,,0,0,0,,Managed agents handle bid ops
+Dialogue: 0,0:00:31.00,0:00:37.50,Small,,0,0,0,,Monitoring, matching, artifacts, outreach, handoffs
+Dialogue: 0,0:00:37.50,0:00:43.80,Callout,,0,0,0,,Creators focus on the work they love
+Dialogue: 0,0:00:37.50,0:00:43.80,Small,,0,0,0,,Shoot, teach, produce, perform — let the bot bid
+Dialogue: 0,0:00:00.00,0:00:43.80,Signoff,,0,0,0,,Reviewed & enhanced with Claude Code
+Dialogue: 0,0:00:38.00,0:00:43.80,Bottom,,0,0,0,,A portable bid-ops loop for creators, artists, and SMEs

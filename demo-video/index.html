@@ -1,0 +1,453 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>beepbop demo trailer</title>
+    <link rel="icon" href="data:," />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #05070d;
+        font-family: "Inter", "Helvetica Neue", Arial, sans-serif;
+      }
+
+      [data-composition-id="main"] {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        isolation: isolate;
+        color: #f5f7fb;
+        background:
+          radial-gradient(circle at 74% 28%, rgba(255, 61, 139, 0.18), transparent 31%),
+          radial-gradient(circle at 24% 36%, rgba(0, 229, 255, 0.2), transparent 34%),
+          linear-gradient(180deg, #07101a 0%, #05070d 56%, #020307 100%);
+        --grid-y: 0px;
+      }
+
+      .layer {
+        position: absolute;
+        inset: 0;
+      }
+
+      .grade {
+        z-index: 1;
+        background:
+          linear-gradient(90deg, rgba(0, 229, 255, 0.1), transparent 22%, rgba(255, 176, 0, 0.09) 76%, rgba(255, 61, 139, 0.13)),
+          radial-gradient(circle at 50% 62%, transparent 0%, rgba(2, 3, 7, 0.4) 76%);
+        mix-blend-mode: screen;
+        pointer-events: none;
+      }
+
+      .data-grid {
+        z-index: 0;
+        opacity: 0.34;
+        transform: translate3d(0, var(--grid-y), 0);
+        background-image:
+          linear-gradient(rgba(0, 229, 255, 0.14) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(0, 229, 255, 0.12) 1px, transparent 1px);
+        background-size: 96px 96px;
+        mask-image: linear-gradient(180deg, transparent 0%, black 24%, black 74%, transparent 100%);
+      }
+
+      .noise {
+        z-index: 20;
+        opacity: 0.075;
+        pointer-events: none;
+        background-image:
+          radial-gradient(circle at 12% 22%, rgba(255, 255, 255, 0.75) 0.8px, transparent 1px),
+          radial-gradient(circle at 48% 64%, rgba(255, 255, 255, 0.34) 0.8px, transparent 1px),
+          radial-gradient(circle at 82% 38%, rgba(255, 255, 255, 0.48) 0.8px, transparent 1px);
+        background-size: 9px 9px, 11px 11px, 13px 13px;
+        mix-blend-mode: soft-light;
+      }
+
+      .vignette {
+        z-index: 21;
+        pointer-events: none;
+        background: radial-gradient(circle at 50% 46%, transparent 0%, transparent 48%, rgba(0, 0, 0, 0.58) 100%);
+      }
+
+      .skyline {
+        z-index: 2;
+        bottom: 0;
+        top: auto;
+        height: 390px;
+        opacity: 0.95;
+      }
+
+      .skyline svg {
+        display: block;
+        width: 2060px;
+        height: 390px;
+        margin-left: -70px;
+      }
+
+      .hero {
+        z-index: 6;
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        width: 100%;
+        height: 100%;
+        padding: 96px 122px 132px;
+        gap: 26px;
+        pointer-events: none;
+      }
+
+      .hero-photo-bg,
+      .hero-photo-grade {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+      }
+
+      .hero-photo-bg {
+        z-index: -2;
+        overflow: hidden;
+        background:
+          linear-gradient(rgba(5, 7, 13, 0.1), rgba(5, 7, 13, 0.1)),
+          url("./assets/singapore-esplanade-pexels-ravishm-14542015.jpg") center 50% / cover no-repeat;
+        filter: brightness(0.42) saturate(1.14) contrast(1.08) blur(5px);
+        transform: scale(1.05);
+      }
+
+      .hero-photo-grade {
+        z-index: -1;
+        background:
+          radial-gradient(circle at 48% 44%, rgba(0, 229, 255, 0.1), transparent 28%),
+          linear-gradient(90deg, rgba(5, 7, 13, 0.74), rgba(5, 7, 13, 0.18) 46%, rgba(5, 7, 13, 0.78)),
+          linear-gradient(180deg, rgba(5, 7, 13, 0.22), rgba(5, 7, 13, 0.74));
+      }
+
+      .eyebrow,
+      .credit,
+      .caption,
+      .micro,
+      .url,
+      .pill {
+        font-family: "Inter", "Helvetica Neue", Arial, sans-serif;
+        letter-spacing: 0;
+      }
+
+      .eyebrow {
+        display: inline-flex;
+        align-items: center;
+        gap: 16px;
+        width: fit-content;
+        color: rgba(245, 247, 251, 0.76);
+        font-size: 24px;
+        font-weight: 760;
+      }
+
+      .eyebrow::before {
+        content: "";
+        width: 88px;
+        height: 2px;
+        background: linear-gradient(90deg, #00e5ff, rgba(0, 229, 255, 0));
+      }
+
+      .credit {
+        width: fit-content;
+        padding: 10px 16px;
+        border: 1px solid rgba(0, 229, 255, 0.32);
+        border-radius: 999px;
+        color: rgba(245, 247, 251, 0.86);
+        background: rgba(0, 229, 255, 0.1);
+        box-shadow: 0 0 36px rgba(0, 229, 255, 0.12);
+        font-size: 22px;
+        line-height: 1;
+        font-weight: 820;
+      }
+
+      .brand-svg {
+        display: block;
+        width: 1500px;
+        height: 252px;
+        overflow: visible;
+      }
+
+      .mark-mask {
+        width: 1640px;
+        height: 348px;
+        overflow: hidden;
+        -webkit-mask-image: url("data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%221640%22%20height%3D%22348%22%20viewBox%3D%220%200%201640%20348%22%3E%3Ctext%20x%3D%22820%22%20y%3D%22178%22%20text-anchor%3D%22middle%22%20dominant-baseline%3D%22middle%22%20font-family%3D%22Arial%20Black%2C%20Montserrat%2C%20sans-serif%22%20font-size%3D%22266%22%20font-weight%3D%22900%22%20fill%3D%22white%22%3Ebeepbop%3C%2Ftext%3E%3C%2Fsvg%3E");
+        mask-image: url("data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%221640%22%20height%3D%22348%22%20viewBox%3D%220%200%201640%20348%22%3E%3Ctext%20x%3D%22820%22%20y%3D%22178%22%20text-anchor%3D%22middle%22%20dominant-baseline%3D%22middle%22%20font-family%3D%22Arial%20Black%2C%20Montserrat%2C%20sans-serif%22%20font-size%3D%22266%22%20font-weight%3D%22900%22%20fill%3D%22white%22%3Ebeepbop%3C%2Ftext%3E%3C%2Fsvg%3E");
+        -webkit-mask-repeat: no-repeat;
+        mask-repeat: no-repeat;
+        -webkit-mask-size: 100% 100%;
+        mask-size: 100% 100%;
+        -webkit-mask-position: center center;
+        mask-position: center center;
+        background: url("./assets/singapore-esplanade-pexels-ravishm-14542015.jpg") center 56% / cover no-repeat;
+        transform: translateZ(0);
+        filter:
+          drop-shadow(0 0 22px rgba(0, 229, 255, 0.26))
+          drop-shadow(0 20px 46px rgba(0, 0, 0, 0.52));
+      }
+
+      .hero-sub {
+        max-width: 1100px;
+        color: rgba(245, 247, 251, 0.9);
+        font-size: 38px;
+        line-height: 1.08;
+        font-weight: 780;
+      }
+
+      .hero-sub span {
+        color: #00e5ff;
+      }
+
+      .problem-line {
+        z-index: 8;
+        position: absolute;
+        left: 150px;
+        top: 168px;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        width: 1560px;
+        pointer-events: none;
+      }
+
+      .kinetic-row {
+        display: flex;
+        align-items: baseline;
+        gap: 24px;
+        height: 122px;
+        overflow: hidden;
+      }
+
+      .big-word {
+        font-family: "Arial Black", "Montserrat", "Helvetica Neue", Arial, sans-serif;
+        font-size: 102px;
+        line-height: 0.9;
+        font-weight: 900;
+        letter-spacing: 0;
+        color: #f5f7fb;
+        text-transform: uppercase;
+        white-space: nowrap;
+      }
+
+      .accent-cyan {
+        color: #00e5ff;
+      }
+
+      .accent-amber {
+        color: #ffb000;
+      }
+
+      .accent-green {
+        color: #3dff99;
+      }
+
+      .caption {
+        max-width: 1280px;
+        color: rgba(245, 247, 251, 0.76);
+        font-size: 34px;
+        line-height: 1.24;
+        font-weight: 680;
+      }
+
+      .signoff-corner {
+        z-index: 19;
+        position: absolute;
+        right: 36px;
+        bottom: 36px;
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 14px;
+        border: 1px solid rgba(0, 229, 255, 0.3);
+        border-radius: 999px;
+        background: rgba(7, 16, 26, 0.68);
+        color: rgba(245, 247, 251, 0.82);
+        font-size: 18px;
+        font-weight: 720;
+        backdrop-filter: blur(4px);
+      }
+
+      .signoff-corner::before {
+        content: "";
+        width: 8px;
+        height: 8px;
+        border-radius: 999px;
+        background: #3dff99;
+        box-shadow: 0 0 10px rgba(61, 255, 153, 0.9);
+      }
+
+      .flash {
+        z-index: 18;
+        background: #f5f7fb;
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      .letterbox::before,
+      .letterbox::after {
+        content: "";
+        position: absolute;
+        left: 0;
+        right: 0;
+        height: 54px;
+        background: rgba(2, 3, 7, 0.9);
+        z-index: 22;
+      }
+
+      .letterbox::before {
+        top: 0;
+        box-shadow: 0 18px 44px rgba(2, 3, 7, 0.42);
+      }
+
+      .letterbox::after {
+        bottom: 0;
+        box-shadow: 0 -18px 44px rgba(2, 3, 7, 0.42);
+      }
+
+      .accessibility {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="10"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div class="layer data-grid"></div>
+      <div class="layer grade"></div>
+
+      <div class="layer skyline" aria-hidden="true">
+        <svg viewBox="0 0 2060 390" preserveAspectRatio="none">
+          <defs>
+            <linearGradient id="cityGlow" x1="0" x2="1" y1="0" y2="0">
+              <stop offset="0" stop-color="#00E5FF" stop-opacity="0.32" />
+              <stop offset="0.5" stop-color="#FFB000" stop-opacity="0.24" />
+              <stop offset="1" stop-color="#FF3D8B" stop-opacity="0.3" />
+            </linearGradient>
+            <linearGradient id="cityFill" x1="0" x2="0" y1="0" y2="1">
+              <stop offset="0" stop-color="#11263A" />
+              <stop offset="1" stop-color="#05070D" />
+            </linearGradient>
+          </defs>
+          <rect x="0" y="320" width="2060" height="70" fill="#03050A" />
+          <path d="M0 322 C280 292 490 338 720 306 C940 276 1110 326 1320 296 C1580 260 1780 316 2060 282 L2060 390 L0 390 Z" fill="url(#cityGlow)" opacity="0.48" />
+          <g fill="url(#cityFill)" stroke="rgba(0,229,255,0.22)" stroke-width="2">
+            <path d="M106 320 L106 236 L172 236 L172 186 L228 186 L228 320 Z" />
+            <path d="M284 320 L284 176 L350 150 L420 176 L420 320 Z" />
+            <path d="M492 320 L492 118 L560 118 L560 320 Z" />
+            <path d="M594 320 L594 86 L672 86 L672 320 Z" />
+            <path d="M706 320 L706 138 L758 102 L810 138 L810 320 Z" />
+            <path d="M908 320 L908 112 L964 112 L964 320 Z M1012 320 L1012 92 L1068 92 L1068 320 Z M1114 320 L1114 132 L1170 132 L1170 320 Z" />
+            <path d="M894 112 C980 72 1082 72 1186 112 L1180 130 C1076 98 984 98 900 130 Z" fill="#162B41" />
+            <path d="M1258 320 C1258 246 1318 186 1392 186 C1466 186 1526 246 1526 320 Z" />
+            <path d="M1296 320 C1296 268 1338 226 1390 226 C1444 226 1486 268 1486 320 Z" fill="#0C1A2A" stroke="rgba(255,176,0,0.28)" />
+            <path d="M1576 320 L1576 156 L1652 156 L1652 320 Z" />
+            <path d="M1706 320 L1706 98 L1768 98 L1768 320 Z" />
+            <circle cx="1858" cy="178" r="92" fill="transparent" stroke="rgba(0,229,255,0.28)" stroke-width="7" />
+            <path d="M1858 86 L1858 320 M1766 178 L1950 178 M1794 114 L1922 242 M1922 114 L1794 242" stroke="rgba(0,229,255,0.16)" fill="none" stroke-width="3" />
+          </g>
+          <g fill="#FFB000" opacity="0.6">
+            <rect x="618" y="116" width="10" height="14" />
+            <rect x="646" y="150" width="10" height="14" />
+            <rect x="522" y="156" width="9" height="14" />
+            <rect x="1028" y="138" width="9" height="14" />
+            <rect x="1134" y="184" width="9" height="14" />
+            <rect x="1602" y="196" width="9" height="14" />
+            <rect x="1730" y="140" width="9" height="14" />
+          </g>
+        </svg>
+      </div>
+
+      <section class="hero">
+        <div class="hero-photo-bg"></div>
+        <div class="hero-photo-grade"></div>
+        <div class="eyebrow">PUSH TO PROD // SINGAPORE</div>
+        <div class="credit">Reviewed &amp; enhanced with Claude Code</div>
+        <div class="brand-svg mark-mask"></div>
+        <div class="hero-sub">Telegram-first bid ops for <span>creators, artists, and SMEs.</span></div>
+      </section>
+
+      <section class="problem-line">
+        <div class="kinetic-row">
+          <div class="big-word problem-word">Artists</div>
+          <div class="big-word problem-word accent-cyan">need money 💸</div>
+        </div>
+        <div class="kinetic-row">
+          <div class="big-word problem-word accent-amber">The State</div>
+          <div class="big-word problem-word">is the</div>
+        </div>
+        <div class="kinetic-row">
+          <div class="big-word problem-word">biggest buyer.</div>
+        </div>
+        <p class="caption problem-caption">But public-sector procurement turns opportunity into death-by-tab-switching.</p>
+      </section>
+
+      <div class="signoff-corner">Reviewed by Claude Code</div>
+      <div class="layer flash"></div>
+      <div class="layer noise"></div>
+      <div class="layer vignette"></div>
+      <div class="layer letterbox"></div>
+      <div class="accessibility">beepbop demo trailer intro — Push to Prod Hackathon with Genspark &amp; Claude</div>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+
+      const tl = gsap.timeline({ paused: true });
+      const root = document.querySelector("[data-composition-id='main']");
+
+      gsap.set(".problem-line", { opacity: 0 });
+      gsap.set(".signoff-corner", { opacity: 0, y: 12 });
+
+      tl.from(".skyline", { y: 76, opacity: 0, duration: 0.9, ease: "power3.out" }, 0);
+      tl.from(".eyebrow", { y: 34, opacity: 0, duration: 0.48, ease: "power3.out" }, 0.12);
+      tl.from(".credit", { y: 28, opacity: 0, scale: 0.94, duration: 0.42, ease: "power3.out" }, 0.24);
+      tl.from(".brand-svg", { y: 68, opacity: 0, scale: 0.94, filter: "blur(16px)", duration: 0.78, ease: "power4.out" }, 0.32);
+      tl.from(".hero-sub", { y: 36, opacity: 0, filter: "blur(10px)", duration: 0.56, ease: "power3.out" }, 0.74);
+      tl.to(root, { "--grid-y": "30px", duration: 9.6, ease: "none" }, 0);
+      tl.to(".skyline svg", { x: 24, duration: 9.6, ease: "none" }, 0);
+      tl.to(".brand-svg", { x: 18, duration: 1.6, ease: "sine.inOut" }, 0.76);
+      tl.to(".hero", { y: -42, opacity: 0, filter: "blur(12px)", duration: 0.5, ease: "power2.in" }, 2.55);
+      tl.to(".flash", { opacity: 0.72, duration: 0.08, ease: "none" }, 2.95);
+      tl.to(".flash", { opacity: 0, duration: 0.2, ease: "power2.out" }, 3.03);
+
+      tl.to(".problem-line", { opacity: 1, duration: 0.01 }, 2.8);
+      tl.from(".problem-word", { yPercent: 120, opacity: 0, stagger: 0.09, duration: 0.5, ease: "power4.out" }, 2.9);
+      tl.from(".problem-caption", { y: 32, opacity: 0, filter: "blur(8px)", duration: 0.5, ease: "power3.out" }, 4.2);
+
+      tl.to(".signoff-corner", { opacity: 1, y: 0, duration: 0.5, ease: "power3.out" }, 5.2);
+
+      tl.to(".problem-word", { yPercent: -110, opacity: 0, stagger: 0.05, duration: 0.4, ease: "power3.in" }, 8.0);
+      tl.to(".problem-caption", { y: -24, opacity: 0, filter: "blur(8px)", duration: 0.36, ease: "power2.in" }, 8.16);
+      tl.to(".problem-line", { opacity: 0, duration: 0.01 }, 8.7);
+      tl.to(".signoff-corner", { opacity: 0, y: -6, duration: 0.35, ease: "power2.in" }, 8.8);
+      tl.to(".flash", { opacity: 0.9, duration: 0.14, ease: "none" }, 9.3);
+      tl.to(".flash", { opacity: 0, duration: 0.2, ease: "power2.out" }, 9.44);
+
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>
