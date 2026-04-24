@@ -7,8 +7,11 @@
     <p class="text-sm text-slate-500 mt-0.5">Scored against your creative-studio context · click any row for pitch artifacts + compliance check</p>
   </div>
   <div class="flex gap-2 items-center">
+    <label class="flex items-center gap-1 text-xs text-slate-600" title="Opens headed Chrome on the server Mac — you scan Singpass to download tender PDFs">
+      <input id="scrape-docs" type="checkbox" class="w-3.5 h-3.5"> with docs (Singpass)
+    </label>
     <input id="scrape-kws" type="text" placeholder="custom keywords (space-separated) — blank = auto from context"
-           class="px-3 py-1.5 text-sm border border-slate-300 rounded w-96 focus:outline-none focus:ring-2 focus:ring-slate-300">
+           class="px-3 py-1.5 text-sm border border-slate-300 rounded w-80 focus:outline-none focus:ring-2 focus:ring-slate-300">
     <button hx-post="/api/score-all" hx-swap="none"
             hx-on::after-request="setTimeout(()=>location.reload(), 2000)"
             class="px-3 py-1.5 bg-slate-900 text-white rounded text-sm hover:bg-slate-800 transition">
@@ -32,15 +35,16 @@
     const btn = document.getElementById('scrape-btn');
     const s = document.getElementById('scrape-status');
     const kwsInput = document.getElementById('scrape-kws').value.trim();
+    const withDocs = document.getElementById('scrape-docs').checked;
     const keywords = kwsInput ? kwsInput.split(/[\s,]+/).filter(Boolean) : [];
     btn.disabled = true;
-    s.innerText = '⏳ Kicking scrape…';
+    s.innerText = withDocs ? '⏳ Launching Chrome for Singpass handoff…' : '⏳ Kicking scrape…';
     try {
       const r = await fetch('/api/scrapes', {
         method: 'POST',
         credentials: 'same-origin',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({keywords}),
+        body: JSON.stringify({keywords, with_docs: withDocs}),
       });
       if (r.ok) {
         const d = await r.json();

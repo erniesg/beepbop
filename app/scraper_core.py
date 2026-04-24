@@ -582,11 +582,21 @@ def run_search(
     days_filter: str = "7",
     headless: bool = True,
     skip_downloads: bool = True,
+    wait_for_login_seconds: int = 0,
+    on_login_state: "callable | None" = None,
 ) -> dict:
     """Importable entry point. Returns {records, json_path, csv_path}.
 
     Sync — wrap in asyncio.to_thread from FastAPI handlers.
-    Public-listing mode; for Singpass-gated docs use the standalone CLI with --wait-for-login.
+
+    Args:
+        wait_for_login_seconds: If > 0, opens a non-headless browser, navigates to a
+            Singpass-gated doc page, and polls for download access every 3s. Forces
+            headless=False so the user can scan Singpass QR manually. Once access is
+            detected OR the timeout hits, proceeds with the keyword search loop.
+            Combine with skip_downloads=False to actually download tender PDFs.
+        on_login_state: Optional callback(state: str) invoked at state transitions:
+            'browser_open', 'login_detected', 'login_timeout'. Useful for DM updates.
     """
     keywords = unique_items([k for k in keywords if normalize_ws(k)])
     output_dir = Path(output_dir).resolve()
@@ -594,11 +604,14 @@ def run_search(
     profile_dir.mkdir(parents=True, exist_ok=True)
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    # Singpass login requires a visible browser window
+    effective_headless = headless and wait_for_login_seconds <= 0
+
     with sync_playwright() as playwright:
         context = playwright.chromium.launch_persistent_context(
             str(profile_dir),
             channel="chrome",
-            headless=headless,
+            headless=effective_headless,
             accept_downloads=True,
             downloads_path=str(output_dir / "downloads"),
         )
@@ -608,8 +621,39 @@ def run_search(
                 extra_page.close()
             except Exception:
                 pass
-        page.goto(BASE_URL, wait_until="domcontentloaded")
-        page.wait_for_timeout(1500)
+
+        if wait_for_login_seconds > 0:
+            # Singpass handoff: navigate to a doc-gated page, poll until downloadable
+            page.goto(DEFAULT_VALIDATE_DOC_URL, wait_until="domcontentloaded")
+            page.wait_for_timeout(2000)
+            resolve_multiple_windows(page)
+            if on_login_state:
+                try: on_login_state("browser_open")
+                except Exception: pass
+            login_deadline = time.time() + wait_for_login_seconds
+            logged_in = False
+            while time.time() < login_deadline:
+                resolve_multiple_windows(page)
+                if documents_are_downloadable(page):
+                    logged_in = True
+                    if on_login_state:
+                        try: on_login_state("login_detected")
+                        except Exception: pass
+                    break
+                time.sleep(3)
+                # Refresh the gated page so the downloadable state can update
+                try:
+                    page.reload(wait_until="domcontentloaded")
+                    page.wait_for_timeout(500)
+                except Exception:
+                    pass
+            if not logged_in and on_login_state:
+                try: on_login_state("login_timeout")
+                except Exception: pass
+            ensure_search_page(page)
+        else:
+            page.goto(BASE_URL, wait_until="domcontentloaded")
+            page.wait_for_timeout(1500)
 
         matches: list[dict[str, str]] = []
         seen_urls: set[str] = set()

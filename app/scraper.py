@@ -52,6 +52,8 @@ async def run_scrape_job(
     keywords: list[str],
     max_pages: int = 3,
     notify_chat_id: str | None = None,
+    with_docs: bool = False,
+    login_wait_seconds: int = 120,
 ) -> dict:
     """Execute a previously-created scrape job. Ingests results, updates status.
 
@@ -71,28 +73,66 @@ async def run_scrape_job(
     try:
         from app.scraper_core import run_search
 
-        with tempfile.TemporaryDirectory(prefix="beepbop_scrape_") as tmpdir:
+        # Persistent profile for docs-mode so the Singpass session survives between runs
+        profile_root = (
+            Path.home() / ".beepbop" / "gebiz_profile"
+            if with_docs
+            else None
+        )
+        if profile_root:
+            profile_root.mkdir(parents=True, exist_ok=True)
+
+        def _login_state(state: str) -> None:
+            msg = {
+                "browser_open": "🪟 Chrome opened on your Mac. Scan Singpass QR to log in — I'll poll for access every 3s.",
+                "login_detected": "✅ Singpass login detected — starting keyword scrape + document download.",
+                "login_timeout": f"⏱ Login wait expired after {login_wait_seconds}s — proceeding without doc access.",
+            }.get(state)
+            if not msg:
+                return
+            try:
+                from app.telegram_bot import send_text
+                send_text(notify_chat_id, msg)
+            except Exception:
+                pass
+
+        # Timeout budget: docs mode needs login wait + download time, so add headroom
+        effective_timeout = settings.scrape_timeout_seconds + (
+            login_wait_seconds + 300 if with_docs else 0
+        )
+
+        # For docs mode, use a persistent output dir so downloads survive past job end
+        persistent_docs_root = Path.home() / ".beepbop" / "docs"
+        if with_docs:
+            persistent_docs_root.mkdir(parents=True, exist_ok=True)
+
+        async def _run_blocking(output_dir: str) -> dict:
             def _blocking() -> dict:
                 return run_search(
                     keywords=keywords,
-                    output_dir=tmpdir,
+                    output_dir=output_dir,
                     max_total=max_pages * 15,
-                    profile_dir=str(Path(tmpdir) / "profile"),
-                    headless=True,
-                    skip_downloads=True,
+                    profile_dir=str(profile_root) if profile_root else str(Path(output_dir) / "profile"),
+                    headless=not with_docs,
+                    skip_downloads=not with_docs,
+                    wait_for_login_seconds=login_wait_seconds if with_docs else 0,
+                    on_login_state=_login_state if with_docs else None,
                 )
+            return await asyncio.wait_for(asyncio.to_thread(_blocking), timeout=effective_timeout)
 
-            try:
-                result = await asyncio.wait_for(
-                    asyncio.to_thread(_blocking),
-                    timeout=settings.scrape_timeout_seconds,
-                )
-            except asyncio.TimeoutError as te:
-                raise TimeoutError(
-                    f"scrape timed out after {settings.scrape_timeout_seconds}s "
-                    f"(keywords={keywords!r}); trim the keyword list or raise scrape_timeout_seconds"
-                ) from te
-            records = result.get("records", [])
+        try:
+            if with_docs:
+                result = await _run_blocking(str(persistent_docs_root))
+            else:
+                with tempfile.TemporaryDirectory(prefix="beepbop_scrape_") as tmpdir:
+                    result = await _run_blocking(tmpdir)
+        except asyncio.TimeoutError as te:
+            raise TimeoutError(
+                f"scrape timed out after {effective_timeout}s "
+                f"(keywords={keywords!r}, with_docs={with_docs}); "
+                f"trim keyword list or raise scrape_timeout_seconds"
+            ) from te
+        records = result.get("records", [])
 
         from app.seed import ensure_default_context, ingest_opportunities
 

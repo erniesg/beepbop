@@ -390,6 +390,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     "/remember &lt;fact&gt; — add a fact (rates, certs, preferences)\n"
                     "/forget &lt;target&gt; — clear (all, preferences, rates, or a key)\n"
                     "/scrape [keywords] — rescan GeBIZ (e.g. <code>/scrape photography workshop</code>)\n"
+                    "/scrape_docs [keywords] — scrape WITH tender-doc download (Singpass handoff)\n"
                     "/jobs — recent scrape jobs + status\n"
                     "/pricing &lt;id&gt; — competitive pricing analysis for an opp\n"
                     "/help — this message\n\n"
@@ -473,12 +474,12 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                         send_text(chat_id, f"Opportunity {opp_id} not found")
                     else:
                         send_opportunity_card(chat_id, opp)
-            elif cmd == "/scrape":
+            elif cmd in ("/scrape", "/scrape_docs"):
                 from app.scraper import ScrapeAlreadyRunning, create_scrape_job, run_scrape_job
                 from app.telegram_bot import _html_escape
+                with_docs = (cmd == "/scrape_docs")
                 kws = [w.strip() for w in (args or "").replace(",", " ").split() if w.strip()]
                 if not kws:
-                    # Pull keywords from the default context's "Target tenders" section
                     from app.matching import keywords_from_context
                     kws = keywords_from_context(_load_default_context()) or [
                         "artist", "photography", "videography", "design", "workshop", "programme", "video", "media"
@@ -489,14 +490,23 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     send_text(chat_id, f"⏳ Already scraping: <code>{_html_escape(str(e))}</code>\nUse <b>/jobs</b> to check progress.")
                     return {"ok": True, "command": cmd, "stage": "already_running"}
 
-                background_tasks.add_task(run_scrape_job, job_id, kws, 3, str(chat_id))
-                send_text(
-                    chat_id,
-                    f"🔍 <b>Scrape #{job_id} started</b>\n"
-                    f"Keywords: <code>{_html_escape(' '.join(kws))}</code>\n"
-                    f"Playwright runs public-listing mode (no Singpass needed). ETA 1–5 min.\n"
-                    f"I'll DM when done, or <b>/jobs</b> to poll."
-                )
+                background_tasks.add_task(run_scrape_job, job_id, kws, 3, str(chat_id), with_docs, 120)
+                if with_docs:
+                    send_text(
+                        chat_id,
+                        f"🔍 <b>Scrape #{job_id} started (docs mode)</b>\n"
+                        f"Keywords: <code>{_html_escape(' '.join(kws))}</code>\n"
+                        f"A Chrome window will pop up on your Mac. <b>Log in with Singpass</b> — "
+                        f"I'll wait 2 min then start downloading tender PDFs.\n"
+                        f"Expect DMs as login is detected + files download."
+                    )
+                else:
+                    send_text(
+                        chat_id,
+                        f"🔍 <b>Scrape #{job_id} started</b>\n"
+                        f"Keywords: <code>{_html_escape(' '.join(kws))}</code>\n"
+                        f"Public-listing mode (no Singpass). ETA 1–5 min. <b>/jobs</b> to poll."
+                    )
             elif cmd == "/pricing":
                 from app.telegram_bot import _html_escape
                 opp_id = None
@@ -942,14 +952,21 @@ async def api_scrape(request: Request, background_tasks: BackgroundTasks):
     keywords = body.get("keywords") or keywords_from_context(_load_default_context()) or [
         "artist", "photography", "videography", "design", "workshop", "programme", "video", "media"
     ]
+    with_docs = bool(body.get("with_docs", False))
+    login_wait = int(body.get("login_wait_seconds", 120))
     from app.scraper import ScrapeAlreadyRunning, create_scrape_job, run_scrape_job
     try:
         job_id = create_scrape_job(keywords, user["id"])
     except ScrapeAlreadyRunning as e:
         raise HTTPException(409, str(e))
     # notify_chat_id=None → falls back to configured TELEGRAM_CHAT_ID (admin)
-    background_tasks.add_task(run_scrape_job, job_id, keywords, 3, None)
-    return {"job_id": job_id, "keywords": keywords, "status": "running"}
+    background_tasks.add_task(run_scrape_job, job_id, keywords, 3, None, with_docs, login_wait)
+    return {
+        "job_id": job_id,
+        "keywords": keywords,
+        "status": "running",
+        "with_docs": with_docs,
+    }
 
 
 @app.get("/api/scrape-status")
