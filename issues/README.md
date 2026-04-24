@@ -17,6 +17,7 @@ Critical path: `#1 → #3 → #5 → #6`. Parallelizable: `#2, #4, #7, #8`.
 | [09](./09-compliance.md) | Compliance / prerequisites agent (MOE Registered Instructor, WSQ, vendor reg) | 20m | #3 |
 | [10](./10-scraper-rewrite.md) | Rewrite gebiz scraper in-repo (drop subprocess) | 15m | #2 |
 | [11](./11-closed-opps-pricing-advisor.md) | Closed opportunities scraper + pricing advisor (bid recs from historical awards) | 25m | #10 |
+| [12](./12-cloud-memory-layer.md) | Cloud-persistent memory layer (Supabase + pgvector, optional MCP) | 45m–2h | #2 |
 
 **Total build: 180m.** Setup/blockers run in parallel with user action.
 

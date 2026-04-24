@@ -463,17 +463,38 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                 send_text(chat_id, "Kicking scrape (using seed data for demo speed)… ✓ 0 new, 42 known.")
             elif cmd == "/remember":
                 if not args:
-                    send_text(chat_id, "Usage: /remember I charge 1500 for full-day video")
+                    send_text(chat_id, "Usage: `/remember I charge 1800 for full-day video`")
                 else:
-                    # Store fact in context profile_md
+                    # Structured parse via Claude
+                    from app.matching import parse_remember_fact
                     from app.db import conn as _conn
+                    import json as _j
+                    parsed = parse_remember_fact(args)
+                    ut, field, value = parsed["update_type"], parsed["field"], parsed["value"]
                     with _conn() as c:
                         row = c.execute("SELECT * FROM contexts ORDER BY id ASC LIMIT 1").fetchone()
                         if row:
-                            new_md = (row["profile_md"] or "") + f"\n\n- {args}"
-                            c.execute("UPDATE contexts SET profile_md = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-                                      (new_md, row["id"]))
-                    send_text(chat_id, f"✓ remembered: _{args}_")
+                            if ut == "rate":
+                                rates = _j.loads(row["rates"] or "{}")
+                                rates[field] = value
+                                c.execute("UPDATE contexts SET rates=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                                          (_j.dumps(rates), row["id"]))
+                            elif ut == "service":
+                                services = _j.loads(row["services"] or "[]")
+                                if value not in services:
+                                    services.append(value)
+                                c.execute("UPDATE contexts SET services=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                                          (_j.dumps(services), row["id"]))
+                            elif ut == "certification":
+                                # Append to profile as structured line
+                                new_md = (row["profile_md"] or "") + f"\n\n**Certifications:** {value}"
+                                c.execute("UPDATE contexts SET profile_md=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                                          (new_md, row["id"]))
+                            else:
+                                new_md = (row["profile_md"] or "") + f"\n\n{value}"
+                                c.execute("UPDATE contexts SET profile_md=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                                          (new_md, row["id"]))
+                    send_text(chat_id, f"✓ {parsed.get('summary','saved')}")
             elif cmd == "/context" or cmd == "/profile":
                 from app.db import conn as _conn
                 import json as _j

@@ -216,6 +216,53 @@ Output STRICT JSON:
 Return 2-5 items — always at least 2 for school/government work. Order by severity (highest first)."""
 
 
+REMEMBER_SYSTEM = """You convert a user's free-text memory into a STRUCTURED context update for their SME org profile.
+
+Output STRICT JSON only:
+{
+  "update_type": "rate" | "service" | "certification" | "profile" | "rejection",
+  "field": "<key>",
+  "value": <value — number for rates, string otherwise>,
+  "summary": "<short human-readable confirmation>"
+}
+
+Examples:
+"I charge 1800 for videography full-day"
+  → {"update_type": "rate", "field": "videography_fullday", "value": 1800, "summary": "Rate saved: videography full-day = SGD 1800"}
+
+"My photography half-day is $650"
+  → {"update_type": "rate", "field": "photography_halfday", "value": 650, "summary": "Rate saved: photography half-day = SGD 650"}
+
+"We're MOE Registered Instructors"
+  → {"update_type": "certification", "field": "certifications", "value": "MOE Registered Instructor", "summary": "Added: MOE Registered Instructor"}
+
+"We also do motion graphics"
+  → {"update_type": "service", "field": "services", "value": "motion graphics", "summary": "Added service: motion graphics"}
+
+"We worked on the NLB reading campaign 2024"
+  → {"update_type": "profile", "field": "profile_md", "value": "- Past work: NLB reading campaign 2024", "summary": "Noted past work"}
+
+Pick the most specific update_type. If it's clearly a rate (includes SGD/dollars/hourly/daily), use "rate"."""
+
+
+def parse_remember_fact(text: str) -> dict:
+    """Turn a free-text /remember fact into a structured update. Fallback to profile append."""
+    try:
+        raw = _claude_with_retry(REMEMBER_SYSTEM, text, max_tokens=300)
+        raw = re.sub(r"^```(?:json)?|```$", "", raw, flags=re.MULTILINE).strip()
+        data = json.loads(raw)
+        if data.get("update_type") in {"rate", "service", "certification", "profile"}:
+            return data
+    except Exception:
+        pass
+    return {
+        "update_type": "profile",
+        "field": "profile_md",
+        "value": f"- {text}",
+        "summary": f"Remembered: {text[:80]}",
+    }
+
+
 def extract_prerequisites(opp: dict, ctx: dict) -> list[dict]:
     import os as _os
     try:
